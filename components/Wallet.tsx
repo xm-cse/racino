@@ -1,39 +1,58 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { createAAWalletSigner } from "@/lib/wallets";
 import { useAuth } from "@crossmint/client-sdk-react-ui";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 
 export default function Wallet() {
   const { user, jwt } = useAuth();
+  const [wallet, setWallet] = useState<string | null>(null);
 
-  const { data: wallet, isLoading } = useQuery({
-    queryKey: ["wallet", jwt],
-    queryFn: async () => {
+  const {
+    mutate: createWallet,
+    isPending,
+    error,
+  } = useMutation({
+    mutationFn: async () => {
       if (!jwt || !user) {
         return null;
       }
-
       return createAAWalletSigner(jwt);
     },
-    enabled: !!jwt && !!user,
+    onSuccess: (wallet) => {
+      setWallet(wallet?.address ?? null);
+    },
   });
 
-  if (!wallet && !isLoading) {
-    return null;
-  }
-
   return (
-    <div className="p-4 border rounded shadow-sm">
-      <h2 className="text-lg font-semibold mb-2">Wallet</h2>
-      {isLoading ? (
-        <p className="text-sm text-gray-600">Creating wallet...</p>
-      ) : (
-        <div>
-          <p className="text-sm text-gray-600">Your wallet address:</p>
-          <p className="font-mono text-sm break-all">{wallet?.address}</p>
-        </div>
-      )}
+    <div className="flex justify-center items-center min-h-[200px] w-full">
+      <div className="max-w-md w-full p-4">
+        {error ? (
+          <>
+            <div className="text-red-500 text-sm mb-4">
+              Error: {error.message}
+            </div>
+            <Button onClick={() => createWallet()} className="w-full">
+              Try Again
+            </Button>
+          </>
+        ) : !wallet ? (
+          <Button
+            onClick={() => createWallet()}
+            disabled={isPending}
+            className="w-full"
+          >
+            {isPending ? "Creating wallet..." : "Create Wallet"}
+          </Button>
+        ) : (
+          <div>
+            <p className="text-sm text-gray-600 mb-2">Your wallet address:</p>
+            <p className="font-mono text-sm break-all">{wallet}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
