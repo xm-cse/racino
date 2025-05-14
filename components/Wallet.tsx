@@ -26,6 +26,18 @@ export default function Wallet() {
     },
   });
 
+  if (!user || !jwt) {
+    return (
+      <div className="flex justify-center items-center min-h-[200px] w-full">
+        <div className="max-w-md w-full p-4">
+          <p className="text-sm text-gray-600 mb-2">
+            Please log in to create a wallet.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex justify-center items-center min-h-[200px] w-full">
       <div className="max-w-md w-full p-4">
