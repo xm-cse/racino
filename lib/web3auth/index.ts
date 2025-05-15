@@ -59,11 +59,13 @@ export async function getWeb3AuthSigner({
   await web3auth.init();
   const { sub } = parseToken(jwt);
 
-  const provider = await web3auth.connect({
-    verifier: verifierId,
-    verifierId: sub,
-    idToken: jwt,
-  });
+  const provider = web3auth.connected
+    ? web3auth.provider
+    : await web3auth.connect({
+        verifier: verifierId,
+        verifierId: sub,
+        idToken: jwt,
+      });
 
   if (provider == null) {
     throw new Error("Web3auth returned a null signer");
