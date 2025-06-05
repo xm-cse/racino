@@ -1,7 +1,11 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { createAAWalletSigner, executeERC20Transfer } from "@/lib/wallets";
+import {
+  createAAWalletSigner,
+  executeERC20Transfer,
+  type ExecuteContractResult,
+} from "@/lib/wallets";
 import { useAuth } from "@crossmint/client-sdk-react-ui";
 import type { EVMSmartWallet } from "@crossmint/client-sdk-smart-wallet";
 import { useMutation } from "@tanstack/react-query";
@@ -14,7 +18,8 @@ const USDC_CONTRACT_ADDRESS =
 export default function Wallet() {
   const { user, jwt } = useAuth();
   const [wallet, setWallet] = useState<EVMSmartWallet | null>(null);
-  const [userOpHash, setUserOpHash] = useState<string | null>(null);
+  const [transactionResult, setTransactionResult] =
+    useState<ExecuteContractResult | null>(null);
 
   const {
     mutate: transferUSDC,
@@ -33,14 +38,14 @@ export default function Wallet() {
         parseUnits("0.001", 6) // USDC has 6 decimals
       );
 
-      return result.userOpHash ?? null;
+      return result;
     },
-    onSuccess: (hash) => {
-      setUserOpHash(hash);
+    onSuccess: (result) => {
+      setTransactionResult(result);
     },
     onError: (error) => {
       console.error(error);
-      setUserOpHash(null);
+      setTransactionResult(null);
     },
   });
 
@@ -120,11 +125,56 @@ export default function Wallet() {
               </div>
             )}
 
-            {userOpHash && (
-              <div className="text-green-600 text-sm">
-                Transfer successful!
-                <div className="font-mono text-xs break-all mt-1 bg-green-50 p-2 rounded">
-                  User Op Hash: {userOpHash}
+            {transactionResult && (
+              <div
+                className={`text-sm ${
+                  transactionResult.success ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                {transactionResult.success
+                  ? "Transfer successful!"
+                  : "Transfer failed!"}
+                <div className="space-y-2 mt-2">
+                  <div className="font-mono text-xs break-all bg-gray-50 p-2 rounded">
+                    <div className="font-semibold mb-1">Transaction Hash:</div>
+                    {transactionResult.txHash}
+                  </div>
+
+                  {transactionResult.userOpHash && (
+                    <div className="font-mono text-xs break-all bg-blue-50 p-2 rounded">
+                      <div className="font-semibold mb-1">
+                        User Operation Hash:
+                      </div>
+                      {transactionResult.userOpHash}
+                    </div>
+                  )}
+
+                  {transactionResult.userOpReceipt && (
+                    <div className="bg-green-50 p-2 rounded text-xs">
+                      <div className="font-semibold mb-1">
+                        User Operation Details:
+                      </div>
+                      <div>
+                        Success:{" "}
+                        {transactionResult.userOpReceipt.success ? "Yes" : "No"}
+                      </div>
+                      <div>
+                        Gas Used:{" "}
+                        {transactionResult.userOpReceipt.actualGasUsed.toString()}
+                      </div>
+                      <div>
+                        Gas Cost:{" "}
+                        {transactionResult.userOpReceipt.actualGasCost.toString()}
+                      </div>
+                    </div>
+                  )}
+
+                  {transactionResult.error && (
+                    <div className="bg-red-50 p-2 rounded text-xs">
+                      <div className="font-semibold mb-1">Error:</div>
+                      {transactionResult.error}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

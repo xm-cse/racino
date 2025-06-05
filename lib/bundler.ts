@@ -1,12 +1,6 @@
-// import { pimlicoApiKey } from "@/lib/config";
 import { http } from "viem";
-import {
-  // entryPoint07Address,
-  createBundlerClient,
-  // createPaymasterClient,
-} from "viem/account-abstraction";
+import { createBundlerClient } from "viem/account-abstraction";
 import { supportedChains } from "@/lib/networks";
-// import { pimlicoActions } from "permissionless/actions/pimlico";
 
 // dev: see https://viem.sh/account-abstraction/guides/sending-user-operations#7-optional-sponsor-user-operation
 

@@ -5,7 +5,6 @@ export const web3AuthNetwork = process.env.NEXT_PUBLIC_WEB3AUTH_NETWORK ?? "";
 export const web3AuthVerifierId =
   process.env.NEXT_PUBLIC_WEB3AUTH_VERIFIER_ID ?? "";
 export const chain = process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK ?? "";
-export const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY ?? "";
 
 // assert that all the variables are set
 const values = [
@@ -14,7 +13,6 @@ const values = [
   web3AuthNetwork,
   web3AuthVerifierId,
   chain,
-  pimlicoApiKey,
 ];
 
 if (values.some((value) => !value)) {
