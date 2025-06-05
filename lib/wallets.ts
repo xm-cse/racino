@@ -124,7 +124,6 @@ export async function executeContract<
     maxUserOpAttempts = 10,
     userOpRetryDelay = 2000,
     waitForUserOpReceipt = true,
-    txTimeout = 60000, // 1 minute
   } = options;
 
   try {
@@ -159,20 +158,23 @@ export async function executeContract<
     }
 
     // Step 2: Wait for transaction confirmation
-    let txReceipt: TransactionReceipt;
+    let txReceipt: TransactionReceipt | undefined = undefined;
     try {
       console.log("⏳ Waiting for transaction confirmation...");
 
-      // Create a timeout promise
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Transaction timeout")), txTimeout)
-      );
+      txReceipt = await wallet.client.public.waitForTransactionReceipt({
+        hash: txHash,
+      });
 
-      // Race between receipt and timeout
-      txReceipt = (await Promise.race([
-        wallet.client.public.waitForTransactionReceipt({ hash: txHash }),
-        timeoutPromise,
-      ])) as TransactionReceipt;
+      // Check transaction status
+      if (txReceipt?.status === "reverted") {
+        console.error("❌ Transaction reverted");
+        return {
+          txHash,
+          success: false,
+          error: "Transaction was reverted",
+        };
+      }
 
       console.log("✅ Transaction confirmed:", txHash);
     } catch (error) {
@@ -184,16 +186,6 @@ export async function executeContract<
           error instanceof Error
             ? error.message
             : "Transaction confirmation failed",
-      };
-    }
-
-    // Check transaction status
-    if (txReceipt.status === "reverted") {
-      console.error("❌ Transaction reverted");
-      return {
-        txHash,
-        success: false,
-        error: "Transaction was reverted",
       };
     }
 
