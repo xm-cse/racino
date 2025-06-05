@@ -1,40 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { bundlerClient } from "@/lib/bundler";
-import { createAAWalletSigner } from "@/lib/wallets";
+import { createAAWalletSigner, executeERC20Transfer } from "@/lib/wallets";
 import { useAuth } from "@crossmint/client-sdk-react-ui";
 import type { EVMSmartWallet } from "@crossmint/client-sdk-smart-wallet";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { type Address, parseUnits } from "viem";
-
-const transferABI = [
-  {
-    inputs: [
-      {
-        internalType: "address",
-        name: "to",
-        type: "address",
-      },
-      {
-        internalType: "uint256",
-        name: "value",
-        type: "uint256",
-      },
-    ],
-    name: "transfer",
-    outputs: [
-      {
-        internalType: "bool",
-        name: "",
-        type: "bool",
-      },
-    ],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-] as const;
 
 const USDC_CONTRACT_ADDRESS =
   "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582" as Address; // USDC Polygon Amoy
@@ -42,7 +14,7 @@ const USDC_CONTRACT_ADDRESS =
 export default function Wallet() {
   const { user, jwt } = useAuth();
   const [wallet, setWallet] = useState<EVMSmartWallet | null>(null);
-  const [transferTxHash, setTransferTxHash] = useState<string | null>(null);
+  const [userOpHash, setUserOpHash] = useState<string | null>(null);
 
   const {
     mutate: transferUSDC,
@@ -54,35 +26,21 @@ export default function Wallet() {
         return null;
       }
 
-      const hash = await wallet.executeContract({
-        address: USDC_CONTRACT_ADDRESS, // USDC contract
-        abi: transferABI,
-        functionName: "transfer",
-        args: [
-          "0xa064b2E2B6f9CEaC2c60a81369aeC35C0FBe467F", // EOA
-          parseUnits("0.001", 6), // USDC has 6 decimals
-        ],
-      });
+      const result = await executeERC20Transfer(
+        wallet,
+        USDC_CONTRACT_ADDRESS,
+        "0xa064b2E2B6f9CEaC2c60a81369aeC35C0FBe467F", // EOA
+        parseUnits("0.001", 6) // USDC has 6 decimals
+      );
 
-      // wait for hash to be mined
-      await wallet.client.public.waitForTransactionReceipt({
-        hash,
-      });
-
-      // wait for user operation to be mined
-      await bundlerClient.waitForUserOperationReceipt({
-        hash,
-        timeout: 1000 * 60 * 2, // 2 minutes
-      });
-
-      return hash;
+      return result.userOpHash ?? null;
     },
-    onSuccess: (txHash) => {
-      setTransferTxHash(txHash);
+    onSuccess: (hash) => {
+      setUserOpHash(hash);
     },
     onError: (error) => {
       console.error(error);
-      setTransferTxHash(null);
+      setUserOpHash(null);
     },
   });
 
@@ -162,11 +120,11 @@ export default function Wallet() {
               </div>
             )}
 
-            {transferTxHash && (
+            {userOpHash && (
               <div className="text-green-600 text-sm">
                 Transfer successful!
                 <div className="font-mono text-xs break-all mt-1 bg-green-50 p-2 rounded">
-                  {transferTxHash}
+                  User Op Hash: {userOpHash}
                 </div>
               </div>
             )}
