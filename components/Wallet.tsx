@@ -1,12 +1,13 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { bundlerClient } from "@/lib/bundler";
 import { createAAWalletSigner } from "@/lib/wallets";
 import { useAuth } from "@crossmint/client-sdk-react-ui";
 import type { EVMSmartWallet } from "@crossmint/client-sdk-smart-wallet";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { parseUnits } from "viem";
+import { type Address, parseUnits } from "viem";
 
 const transferABI = [
   {
@@ -18,16 +19,25 @@ const transferABI = [
       },
       {
         internalType: "uint256",
-        name: "amount",
+        name: "value",
         type: "uint256",
       },
     ],
     name: "transfer",
-    outputs: [],
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
     stateMutability: "nonpayable",
     type: "function",
   },
 ] as const;
+
+const USDC_CONTRACT_ADDRESS =
+  "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582" as Address; // USDC Polygon Amoy
 
 export default function Wallet() {
   const { user, jwt } = useAuth();
@@ -44,45 +54,31 @@ export default function Wallet() {
         return null;
       }
 
-      console.log("transferUSDC");
-      const maxAttempts = 4;
+      const hash = await wallet.executeContract({
+        address: USDC_CONTRACT_ADDRESS, // USDC contract
+        abi: transferABI,
+        functionName: "transfer",
+        args: [
+          "0xa064b2E2B6f9CEaC2c60a81369aeC35C0FBe467F", // EOA
+          parseUnits("0.001", 6), // USDC has 6 decimals
+        ],
+      });
 
-      for (let attempt = 0; attempt <= maxAttempts; attempt++) {
-        try {
-          console.log(`attempt ${attempt} of ${maxAttempts}`);
-          const txHash = await wallet.executeContract({
-            address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC contract
-            abi: transferABI,
-            functionName: "transfer",
-            args: [
-              "0xa064b2E2B6f9CEaC2c60a81369aeC35C0FBe467F", // EOA
-              parseUnits("0.001", 6), // USDC has 6 decimals
-            ],
-          });
+      // wait for hash to be mined
+      await wallet.client.public.waitForTransactionReceipt({
+        hash,
+      });
 
-          console.log(`attempt ${attempt} succeeded:`, txHash);
+      // wait for user operation to be mined
+      await bundlerClient.waitForUserOperationReceipt({
+        hash,
+        timeout: 1000 * 60 * 2, // 2 minutes
+      });
 
-          return txHash;
-        } catch (error: unknown) {
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
-          console.log(`attempt ${attempt} failed:`, errorMessage);
-
-          if (attempt === maxAttempts) {
-            throw error;
-          }
-
-          if (errorMessage.toLowerCase().includes("timed out")) {
-            throw error;
-          }
-
-          // exponential backoff
-          await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
-        }
-      }
+      return hash;
     },
     onSuccess: (txHash) => {
-      setTransferTxHash(txHash || null);
+      setTransferTxHash(txHash);
     },
     onError: (error) => {
       console.error(error);
