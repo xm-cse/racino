@@ -1,38 +1,25 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { createAAWalletSigner } from "@/lib/wallets";
+import {
+  createAAWalletSigner,
+  executeERC20Transfer,
+  type ExecuteContractResult,
+} from "@/lib/wallets";
 import { useAuth } from "@crossmint/client-sdk-react-ui";
 import type { EVMSmartWallet } from "@crossmint/client-sdk-smart-wallet";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { parseUnits } from "viem";
+import { type Address, parseUnits } from "viem";
 
-const transferABI = [
-  {
-    inputs: [
-      {
-        internalType: "address",
-        name: "to",
-        type: "address",
-      },
-      {
-        internalType: "uint256",
-        name: "amount",
-        type: "uint256",
-      },
-    ],
-    name: "transfer",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-] as const;
+const USDC_CONTRACT_ADDRESS =
+  "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582" as Address; // USDC Polygon Amoy
 
 export default function Wallet() {
   const { user, jwt } = useAuth();
   const [wallet, setWallet] = useState<EVMSmartWallet | null>(null);
-  const [transferTxHash, setTransferTxHash] = useState<string | null>(null);
+  const [transactionResult, setTransactionResult] =
+    useState<ExecuteContractResult | null>(null);
 
   const {
     mutate: transferUSDC,
@@ -44,49 +31,21 @@ export default function Wallet() {
         return null;
       }
 
-      console.log("transferUSDC");
-      const maxAttempts = 4;
+      const result = await executeERC20Transfer(
+        wallet,
+        USDC_CONTRACT_ADDRESS,
+        "0xa064b2E2B6f9CEaC2c60a81369aeC35C0FBe467F", // EOA
+        parseUnits("0.001", 6) // USDC has 6 decimals
+      );
 
-      for (let attempt = 0; attempt <= maxAttempts; attempt++) {
-        try {
-          console.log(`attempt ${attempt} of ${maxAttempts}`);
-          const txHash = await wallet.executeContract({
-            address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC contract
-            abi: transferABI,
-            functionName: "transfer",
-            args: [
-              "0xa064b2E2B6f9CEaC2c60a81369aeC35C0FBe467F", // EOA
-              parseUnits("0.001", 6), // USDC has 6 decimals
-            ],
-          });
-
-          console.log(`attempt ${attempt} succeeded:`, txHash);
-
-          return txHash;
-        } catch (error: unknown) {
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
-          console.log(`attempt ${attempt} failed:`, errorMessage);
-
-          if (attempt === maxAttempts) {
-            throw error;
-          }
-
-          if (errorMessage.toLowerCase().includes("timed out")) {
-            throw error;
-          }
-
-          // exponential backoff
-          await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
-        }
-      }
+      return result;
     },
-    onSuccess: (txHash) => {
-      setTransferTxHash(txHash || null);
+    onSuccess: (result) => {
+      setTransactionResult(result);
     },
     onError: (error) => {
       console.error(error);
-      setTransferTxHash(null);
+      setTransactionResult(null);
     },
   });
 
@@ -166,11 +125,56 @@ export default function Wallet() {
               </div>
             )}
 
-            {transferTxHash && (
-              <div className="text-green-600 text-sm">
-                Transfer successful!
-                <div className="font-mono text-xs break-all mt-1 bg-green-50 p-2 rounded">
-                  {transferTxHash}
+            {transactionResult && (
+              <div
+                className={`text-sm ${
+                  transactionResult.success ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                {transactionResult.success
+                  ? "Transfer successful!"
+                  : "Transfer failed!"}
+                <div className="space-y-2 mt-2">
+                  <div className="font-mono text-xs break-all bg-gray-50 p-2 rounded">
+                    <div className="font-semibold mb-1">Transaction Hash:</div>
+                    {transactionResult.txHash}
+                  </div>
+
+                  {transactionResult.userOpHash && (
+                    <div className="font-mono text-xs break-all bg-blue-50 p-2 rounded">
+                      <div className="font-semibold mb-1">
+                        User Operation Hash:
+                      </div>
+                      {transactionResult.userOpHash}
+                    </div>
+                  )}
+
+                  {transactionResult.userOpReceipt && (
+                    <div className="bg-green-50 p-2 rounded text-xs">
+                      <div className="font-semibold mb-1">
+                        User Operation Details:
+                      </div>
+                      <div>
+                        Success:{" "}
+                        {transactionResult.userOpReceipt.success ? "Yes" : "No"}
+                      </div>
+                      <div>
+                        Gas Used:{" "}
+                        {transactionResult.userOpReceipt.actualGasUsed.toString()}
+                      </div>
+                      <div>
+                        Gas Cost:{" "}
+                        {transactionResult.userOpReceipt.actualGasCost.toString()}
+                      </div>
+                    </div>
+                  )}
+
+                  {transactionResult.error && (
+                    <div className="bg-red-50 p-2 rounded text-xs">
+                      <div className="font-semibold mb-1">Error:</div>
+                      {transactionResult.error}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
