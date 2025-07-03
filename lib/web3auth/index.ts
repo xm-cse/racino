@@ -12,7 +12,7 @@ import {
   blockchainToDisplayName,
 } from "@crossmint/common-sdk-base";
 
-import { parseToken } from "./auth";
+import { parseToken, validateJWTExpiration } from "./auth";
 import {
   getBlockExplorerByBlockchain,
   getTickerByBlockchain,
@@ -36,6 +36,13 @@ export async function getWeb3AuthSigner({
   jwt,
   verifierId,
 }: Web3AuthSignerParams): Promise<EIP1193Provider> {
+  // Validate JWT before proceeding
+  if (!validateJWTExpiration(jwt)) {
+    throw new Error(
+      "JWT token is expired or invalid. Please refresh your authentication."
+    );
+  }
+
   const chainId = blockchainToChainId(chain);
   const chainConfig = {
     chainNamespace: CHAIN_NAMESPACES.EIP155,
