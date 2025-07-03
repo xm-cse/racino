@@ -35,7 +35,8 @@ export default function Wallet() {
         wallet,
         USDC_CONTRACT_ADDRESS,
         "0xa064b2E2B6f9CEaC2c60a81369aeC35C0FBe467F", // EOA
-        parseUnits("0.001", 6) // USDC has 6 decimals
+        parseUnits("0.001", 6), // USDC has 6 decimals
+        { jwt } // Pass JWT in options for validation
       );
 
       return result;

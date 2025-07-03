@@ -25,6 +25,7 @@ import {
 } from "viem";
 import { bundlerClient } from "@/lib/bundler";
 import type { GetUserOperationReceiptReturnType } from "viem/account-abstraction";
+import { validateJWTExpiration } from "@/lib/web3auth/auth";
 
 export interface ExecuteContractParams<
   TAbi extends Abi,
@@ -52,8 +53,8 @@ export interface ExecuteContractOptions {
   userOpRetryDelay?: number;
   /** Whether to wait for UserOp receipt or just return after tx confirmation */
   waitForUserOpReceipt?: boolean;
-  /** Custom timeout for transaction confirmation (ms) */
-  txTimeout?: number;
+  /** JWT token for validation (optional but recommended) */
+  jwt?: string;
 }
 
 // EntryPoint UserOperationEvent ABI
@@ -81,7 +82,10 @@ export const xm = SmartWalletSDK.init({
 
 export const createAAWalletSigner = async (jwt: string) => {
   try {
-    console.log("creating wallet");
+    // Validate JWT before creating signer
+    if (!validateJWTExpiration(jwt)) {
+      throw new Error("JWT token is expired. Please log in again.");
+    }
 
     const signer = await getWeb3AuthSigner({
       clientId: web3AuthClientId,
@@ -91,15 +95,20 @@ export const createAAWalletSigner = async (jwt: string) => {
       chain,
     } as Web3AuthSignerParams);
 
-    console.log("config created");
+    console.log("✅ Web3Auth signer created successfully");
 
-    console.log({ jwt }, chain, signer);
+    const wallet = await xm.getOrCreateWallet(
+      { jwt },
+      chain as EVMSmartWalletChain,
+      {
+        signer: signer as ExternalSigner,
+      }
+    );
 
-    return xm.getOrCreateWallet({ jwt }, chain as EVMSmartWalletChain, {
-      signer: signer as ExternalSigner,
-    });
+    console.log("✅ Crossmint wallet created:", wallet.address);
+    return wallet;
   } catch (error) {
-    console.error("Error creating AA wallet signer:", error);
+    console.error("❌ Error creating AA wallet signer:", error);
     throw error;
   }
 };
@@ -124,10 +133,22 @@ export async function executeContract<
     maxUserOpAttempts = 10,
     userOpRetryDelay = 2000,
     waitForUserOpReceipt = true,
+    jwt,
   } = options;
 
   try {
     console.log("🚀 Starting contract execution...");
+
+    // Validate JWT if provided
+    if (jwt && !validateJWTExpiration(jwt)) {
+      console.error("❌ JWT expired during contract execution");
+      return {
+        txHash: "0x" as Hex,
+        success: false,
+        error: "JWT token expired. Please refresh your authentication and try again.",
+      };
+    }
+
     console.log("📋 Contract details:", {
       address: params.address,
       function: params.functionName,
@@ -135,7 +156,7 @@ export async function executeContract<
       value: params.value?.toString(),
     });
 
-    // Step 1: Execute the contract
+    // Execute the contract
     let txHash: Hex;
 
     try {
