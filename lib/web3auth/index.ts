@@ -20,14 +20,31 @@ import {
   getUrlProviderByBlockchain,
 } from "./networks";
 
+// Extended blockchain type to support apechain
+type ExtendedBlockchain = Blockchain | "apechain" | "curtis";
+
 export type { TORUS_NETWORK_TYPE } from "@web3auth/single-factor-auth";
 export type Web3AuthSignerParams = {
   clientId: string;
   verifierId: string;
   web3AuthNetwork: TORUS_NETWORK_TYPE;
   jwt: string;
-  chain: Blockchain;
+  chain: ExtendedBlockchain;
 };
+
+// Helper function to get chain ID for extended blockchains
+function getChainId(chain: ExtendedBlockchain): number {
+  if (chain === "apechain") return 33139;
+  if (chain === "curtis") return 33111;
+  return blockchainToChainId(chain as Blockchain);
+}
+
+// Helper function to get display name for extended blockchains
+function getDisplayName(chain: ExtendedBlockchain): string {
+  if (chain === "apechain") return "ApeChain";
+  if (chain === "curtis") return "Curtis (ApeChain Testnet)";
+  return blockchainToDisplayName(chain as Blockchain);
+}
 
 export async function getWeb3AuthSigner({
   chain,
@@ -43,12 +60,12 @@ export async function getWeb3AuthSigner({
     );
   }
 
-  const chainId = blockchainToChainId(chain);
+  const chainId = getChainId(chain);
   const chainConfig = {
     chainNamespace: CHAIN_NAMESPACES.EIP155,
     chainId: `0x${chainId.toString(16)}`,
     rpcTarget: getUrlProviderByBlockchain(chain),
-    displayName: blockchainToDisplayName(chain),
+    displayName: getDisplayName(chain),
     blockExplorer: getBlockExplorerByBlockchain(chain),
     ticker: getTickerByBlockchain(chain),
     tickerName: getTickerNameByBlockchain(chain),
