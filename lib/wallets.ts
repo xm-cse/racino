@@ -13,9 +13,10 @@ import {
 } from "@crossmint/client-sdk-smart-wallet";
 import {
   type TORUS_NETWORK_TYPE,
-  getWeb3AuthSigner,
   type Web3AuthSignerParams,
+  getWeb3AuthSigner,
 } from "@/lib/web3auth";
+
 import {
   decodeEventLog,
   type Abi,
@@ -23,7 +24,7 @@ import {
   type Hex,
   type TransactionReceipt,
 } from "viem";
-import { bundlerClient } from "@/lib/bundler";
+import { bundlerClients } from "@/lib/bundler";
 import type { GetUserOperationReceiptReturnType } from "viem/account-abstraction";
 import { validateJWTExpiration } from "@/lib/web3auth/auth";
 
@@ -55,6 +56,8 @@ export interface ExecuteContractOptions {
   waitForUserOpReceipt?: boolean;
   /** JWT token for validation (optional but recommended) */
   jwt?: string;
+  // Add chain parameter for transaction-specific chain selection
+  chain?: string;
 }
 
 // EntryPoint UserOperationEvent ABI
@@ -80,26 +83,32 @@ export const xm = SmartWalletSDK.init({
   clientApiKey: crossmintApiKey,
 });
 
-export const createAAWalletSigner = async (jwt: string) => {
+export const createAAWalletSigner = async (
+  jwt: string,
+  selectedChain?: string
+) => {
   try {
     // Validate JWT before creating signer
     if (!validateJWTExpiration(jwt)) {
       throw new Error("JWT token is expired. Please log in again.");
     }
 
+    // Use provided chain or default to environment chain
+    const targetChain = selectedChain || chain;
+
     const signer = await getWeb3AuthSigner({
       clientId: web3AuthClientId,
       web3AuthNetwork: web3AuthNetwork as TORUS_NETWORK_TYPE,
       verifierId: web3AuthVerifierId,
       jwt,
-      chain,
+      chain: targetChain,
     } as Web3AuthSignerParams);
 
-    console.log("✅ Web3Auth signer created successfully");
+    console.log("✅ Web3Auth signer created successfully for chain:", targetChain);
 
     const wallet = await xm.getOrCreateWallet(
       { jwt },
-      chain as EVMSmartWalletChain,
+      targetChain as EVMSmartWalletChain,
       {
         signer: signer as ExternalSigner,
       }
@@ -264,9 +273,14 @@ export async function executeContract<
       try {
         console.log("⏳ Attempting to get UserOperation receipt...");
 
+        // Get the appropriate bundler client for the chain
+        // Use the chain from options if provided, otherwise default to polygon-amoy
+        const chainId = options.chain || "polygon-amoy";
+        const chainBundlerClient = bundlerClients[chainId];
+
         for (let attempt = 1; attempt <= maxUserOpAttempts; attempt++) {
           try {
-            userOpReceipt = await bundlerClient.getUserOperationReceipt({
+            userOpReceipt = await chainBundlerClient.getUserOperationReceipt({
               hash: userOpHash,
             });
 
@@ -334,6 +348,21 @@ export async function executeERC20Transfer(
   amount: bigint,
   options?: ExecuteContractOptions
 ): Promise<ExecuteContractResult> {
+  // If a different chain is specified, create a new wallet for that chain
+  let targetWallet = wallet;
+  if (options?.chain && options.jwt) {
+    try {
+      targetWallet = await createAAWalletSigner(options.jwt, options.chain);
+    } catch (error) {
+      console.error("Failed to create wallet for chain:", options.chain, error);
+      return {
+        txHash: "0x" as Hex,
+        success: false,
+        error: `Failed to create wallet for chain ${options.chain}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
   const ERC20_TRANSFER_ABI = [
     {
       inputs: [
@@ -348,7 +377,7 @@ export async function executeERC20Transfer(
   ] as const;
 
   return executeContract(
-    wallet,
+    targetWallet,
     {
       address: tokenAddress,
       abi: ERC20_TRANSFER_ABI,
