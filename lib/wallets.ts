@@ -1,5 +1,6 @@
 import {
-  chain,
+  legacyChain,
+  latestChain,
   crossmintApiKey,
   web3AuthClientId,
   web3AuthNetwork,
@@ -27,6 +28,7 @@ import {
 import { bundlerClients } from "@/lib/bundler";
 import type { GetUserOperationReceiptReturnType } from "viem/account-abstraction";
 import { validateJWTExpiration } from "@/lib/web3auth/auth";
+import { DualWalletManager } from "@/lib/dual-wallet-manager";
 
 export interface ExecuteContractParams<
   TAbi extends Abi,
@@ -79,11 +81,16 @@ const USER_OPERATION_EVENT_ABI = {
 const USER_OP_EVENT_TOPIC =
   "0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f";
 
+// Initialize legacy SDK for backward compatibility
 export const xm = SmartWalletSDK.init({
   clientApiKey: crossmintApiKey,
 });
 
-export const createAAWalletSigner = async (
+/**
+ * Create dual wallets (legacy + latest) using the new system
+ * This is the recommended way to get both wallets
+ */
+export const createDualWallets = async (
   jwt: string,
   selectedChain?: string
 ) => {
@@ -93,31 +100,18 @@ export const createAAWalletSigner = async (
       throw new Error("JWT token is expired. Please log in again.");
     }
 
-    // Use provided chain or default to environment chain
-    const targetChain = selectedChain || chain;
+    // Use provided chain or default to environment legacy chain
+    const targetChain = selectedChain || legacyChain;
 
-    const signer = await getWeb3AuthSigner({
-      clientId: web3AuthClientId,
-      web3AuthNetwork: web3AuthNetwork as TORUS_NETWORK_TYPE,
-      verifierId: web3AuthVerifierId,
-      jwt,
-      chain: targetChain,
-    } as Web3AuthSignerParams);
+    // Create dual wallets using the new system
+    const dualResult = await DualWalletManager.getOrCreateDualWallets(jwt, {
+      legacyChain: targetChain,
+      latestChain: latestChain
+    });
 
-    console.log("✅ Web3Auth signer created successfully for chain:", targetChain);
-
-    const wallet = await xm.getOrCreateWallet(
-      { jwt },
-      targetChain as EVMSmartWalletChain,
-      {
-        signer: signer as ExternalSigner,
-      }
-    );
-
-    console.log("✅ Crossmint wallet created:", wallet.address);
-    return wallet;
+    return dualResult;
   } catch (error) {
-    console.error("❌ Error creating AA wallet signer:", error);
+    console.error("❌ Error creating dual wallets:", error);
     throw error;
   }
 };
@@ -352,7 +346,18 @@ export async function executeERC20Transfer(
   let targetWallet = wallet;
   if (options?.chain && options.jwt) {
     try {
-      targetWallet = await createAAWalletSigner(options.jwt, options.chain);
+      const dualResult = await createDualWallets(options.jwt, options.chain);
+      // Use the legacy wallet for transactions to maintain compatibility
+      if (dualResult.legacyWallet) {
+        targetWallet = dualResult.legacyWallet;
+        console.log("✅ Using legacy wallet for transaction:", targetWallet.address);
+      } else if (dualResult.latestWallet) {
+        // Fallback to latest wallet if legacy is not available
+        targetWallet = dualResult.latestWallet;
+        console.log("⚠️ Legacy wallet not available, using latest wallet for transaction:", targetWallet.address);
+      } else {
+        throw new Error("No wallets available for the specified chain");
+      }
     } catch (error) {
       console.error("Failed to create wallet for chain:", options.chain, error);
       return {
