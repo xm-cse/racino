@@ -1,3 +1,4 @@
+export const crossmintLegacyApiKey = process.env.NEXT_PUBLIC_CROSSMINT_API_LEGACY_KEY ?? "";
 export const crossmintApiKey = process.env.NEXT_PUBLIC_CROSSMINT_API_KEY ?? "";
 export const web3AuthClientId =
   process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID ?? "";
@@ -8,6 +9,7 @@ export const chain = process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK ?? "";
 
 // assert that all the variables are set
 const values = [
+  crossmintLegacyApiKey,
   crossmintApiKey,
   web3AuthClientId,
   web3AuthNetwork,
