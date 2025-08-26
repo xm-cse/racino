@@ -83,7 +83,7 @@ export const xm = SmartWalletSDK.init({
   clientApiKey: crossmintLegacyApiKey, // old project client api key
 });
 
-export const createAAWalletSigner = async (
+export const createLegacyWallet = async (
   jwt: string,
   selectedChain?: string
 ) => {
@@ -91,7 +91,7 @@ export const createAAWalletSigner = async (
     // Use provided chain or default to environment chain
     const targetChain = selectedChain || chain;
 
-    const signer = await getWeb3AuthSigner({
+    const { provider } = await getWeb3AuthSigner({
       clientId: web3AuthClientId,
       web3AuthNetwork: web3AuthNetwork as TORUS_NETWORK_TYPE,
       verifierId: web3AuthVerifierId,
@@ -108,7 +108,7 @@ export const createAAWalletSigner = async (
       { jwt },
       targetChain as EVMSmartWalletChain,
       {
-        signer: signer as ExternalSigner,
+        signer: provider as ExternalSigner,
       }
     );
 
@@ -366,7 +366,7 @@ export async function executeERC20Transfer(
   let targetWallet = wallet;
   if (options?.chain && options.jwt) {
     try {
-      targetWallet = await createAAWalletSigner(options.jwt, options.chain);
+      targetWallet = await createLegacyWallet(options.jwt, options.chain);
     } catch (error) {
       console.error(
         "[legacy SDK] ❌ Failed to create wallet for chain:",

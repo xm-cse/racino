@@ -4,7 +4,7 @@ import {
   type TORUS_NETWORK_TYPE,
   Web3Auth,
 } from "@web3auth/single-factor-auth";
-import type { EIP1193Provider } from "viem";
+import type { Address, EIP1193Provider } from "viem";
 
 import {
   type EVMBlockchainIncludingTestnet as Blockchain,
@@ -52,7 +52,10 @@ export async function getWeb3AuthSigner({
   web3AuthNetwork,
   jwt,
   verifierId,
-}: Web3AuthSignerParams): Promise<EIP1193Provider> {
+}: Web3AuthSignerParams): Promise<{
+  provider: EIP1193Provider;
+  address: Address;
+}> {
   // Validate JWT before proceeding
   if (!validateJWTExpiration(jwt)) {
     throw new Error(
@@ -94,5 +97,18 @@ export async function getWeb3AuthSigner({
   if (provider == null) {
     throw new Error("Web3auth returned a null signer");
   }
-  return provider as EIP1193Provider;
+
+  // Get the address (signer address)
+  const accounts = (await provider.request({
+    method: "eth_accounts",
+  })) as string[];
+
+  if (accounts.length === 0) {
+    throw new Error("No accounts found");
+  }
+
+  return {
+    provider: provider as EIP1193Provider,
+    address: accounts[0],
+  };
 }
