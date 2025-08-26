@@ -12,8 +12,10 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { type Address, parseUnits } from "viem";
 
-const USDC_CONTRACT_ADDRESS =
+const USDC_AMOY_CONTRACT_ADDRESS =
   "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582" as Address; // USDC Polygon Amoy
+const USDC_BASE_SEPOLIA_CONTRACT_ADDRESS =
+  "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address; // USDC Base Sepolia
 
 export default function Wallet() {
   const { user, jwt } = useAuth();
@@ -21,22 +23,35 @@ export default function Wallet() {
   const [transactionResult, setTransactionResult] =
     useState<ExecuteContractResult | null>(null);
 
+  // Inputs for Amoy flow
+  const [amoyRecipient, setAmoyRecipient] = useState<string>("");
+  const [amoyAmount, setAmoyAmount] = useState<string>("0.001");
+
+  // Inputs for Base Sepolia flow
+  const [baseRecipient, setBaseRecipient] = useState<string>("");
+  const [baseAmount, setBaseAmount] = useState<string>("0.001");
+
   const {
     mutate: transferUSDC,
     isPending: isTransferUSDCPending,
     error: transferUSDCError,
   } = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (args: {
+      recipient: Address;
+      amount: string;
+      usdcAddress: Address;
+      chain: string;
+    }) => {
       if (!jwt || !user || !wallet) {
         return null;
       }
 
       const result = await executeERC20Transfer(
         wallet,
-        USDC_CONTRACT_ADDRESS,
-        "0xa064b2E2B6f9CEaC2c60a81369aeC35C0FBe467F", // EOA
-        parseUnits("0.001", 6), // USDC has 6 decimals
-        { jwt } // Pass JWT in options for validation
+        args.usdcAddress,
+        args.recipient,
+        parseUnits(args.amount, 6), // USDC has 6 decimals
+        { jwt, chain: args.chain } // Pass JWT and chain in options for validation
       );
 
       return result;
@@ -55,11 +70,11 @@ export default function Wallet() {
     isPending: isCreateWalletPending,
     error: createWalletError,
   } = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (args?: { chain?: string }) => {
       if (!jwt || !user) {
         return null;
       }
-      return createAAWalletSigner(jwt);
+      return createAAWalletSigner(jwt, args?.chain);
     },
     onSuccess: (wallet) => {
       setWallet(wallet || null);
@@ -90,13 +105,13 @@ export default function Wallet() {
             <div className="text-red-500 text-sm">
               Error: {createWalletError.message}
             </div>
-            <Button onClick={() => createWallet()} className="w-full">
+            <Button onClick={() => createWallet({})} className="w-full">
               Try Again
             </Button>
           </div>
         ) : !wallet ? (
           <Button
-            onClick={() => createWallet()}
+            onClick={() => createWallet({})}
             disabled={isCreateWalletPending}
             className="w-full"
           >
@@ -111,14 +126,79 @@ export default function Wallet() {
               </p>
             </div>
 
-            <Button
-              onClick={() => transferUSDC()}
-              disabled={isTransferUSDCPending}
-              className="w-full"
-              variant="outline"
-            >
-              {isTransferUSDCPending ? "Sending USDC..." : "Send 0.001 USDC"}
-            </Button>
+            {/* Amoy USDC Transfer */}
+            <div className="space-y-2 border rounded-md p-3">
+              <div className="font-medium">Send USDC on Amoy</div>
+              <input
+                type="text"
+                placeholder="Recipient address (0x...)"
+                value={amoyRecipient}
+                onChange={(e) => setAmoyRecipient(e.target.value)}
+                className="w-full rounded border px-3 py-2 text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Amount (e.g. 0.001)"
+                value={amoyAmount}
+                onChange={(e) => setAmoyAmount(e.target.value)}
+                className="w-full rounded border px-3 py-2 text-sm"
+              />
+              <Button
+                onClick={() =>
+                  transferUSDC({
+                    recipient: amoyRecipient as Address,
+                    amount: amoyAmount,
+                    usdcAddress: USDC_AMOY_CONTRACT_ADDRESS,
+                    chain: "polygon-amoy",
+                  })
+                }
+                disabled={
+                  isTransferUSDCPending || !amoyRecipient || !amoyAmount
+                }
+                className="w-full"
+                variant="outline"
+              >
+                {isTransferUSDCPending ? "Sending..." : "Send USDC (Amoy)"}
+              </Button>
+            </div>
+
+            {/* Base Sepolia USDC Transfer */}
+            <div className="space-y-2 border rounded-md p-3">
+              <div className="font-medium">Send USDC on Base Sepolia</div>
+              <input
+                type="text"
+                placeholder="Recipient address (0x...)"
+                value={baseRecipient}
+                onChange={(e) => setBaseRecipient(e.target.value)}
+                className="w-full rounded border px-3 py-2 text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Amount (e.g. 0.001)"
+                value={baseAmount}
+                onChange={(e) => setBaseAmount(e.target.value)}
+                className="w-full rounded border px-3 py-2 text-sm"
+              />
+              <Button
+                onClick={() =>
+                  transferUSDC({
+                    recipient: baseRecipient as Address,
+                    amount: baseAmount,
+                    usdcAddress: USDC_BASE_SEPOLIA_CONTRACT_ADDRESS,
+                    chain: "base-sepolia",
+                  })
+                }
+                disabled={
+                  isTransferUSDCPending || !baseRecipient || !baseAmount
+                }
+                className="w-full"
+                variant="outline"
+              >
+                {isTransferUSDCPending
+                  ? "Sending..."
+                  : "Send USDC (Base Sepolia)"}
+              </Button>
+            </div>
 
             {transferUSDCError && (
               <div className="text-red-500 text-sm">
