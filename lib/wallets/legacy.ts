@@ -1,6 +1,6 @@
 import {
   chain,
-  crossmintApiKey,
+  crossmintLegacyApiKey,
   web3AuthClientId,
   web3AuthNetwork,
   web3AuthVerifierId,
@@ -80,7 +80,7 @@ const USER_OP_EVENT_TOPIC =
   "0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f";
 
 export const xm = SmartWalletSDK.init({
-  clientApiKey: crossmintApiKey,
+  clientApiKey: crossmintLegacyApiKey, // old project client api key
 });
 
 export const createAAWalletSigner = async (
@@ -88,11 +88,6 @@ export const createAAWalletSigner = async (
   selectedChain?: string
 ) => {
   try {
-    // Validate JWT before creating signer
-    if (!validateJWTExpiration(jwt)) {
-      throw new Error("JWT token is expired. Please log in again.");
-    }
-
     // Use provided chain or default to environment chain
     const targetChain = selectedChain || chain;
 
@@ -104,7 +99,10 @@ export const createAAWalletSigner = async (
       chain: targetChain,
     } as Web3AuthSignerParams);
 
-    console.log("✅ Web3Auth signer created successfully for chain:", targetChain);
+    console.log(
+      "[legacy SDK] ✅ Web3Auth signer created successfully for chain:",
+      targetChain
+    );
 
     const wallet = await xm.getOrCreateWallet(
       { jwt },
@@ -114,10 +112,10 @@ export const createAAWalletSigner = async (
       }
     );
 
-    console.log("✅ Crossmint wallet created:", wallet.address);
+    console.log("[legacy SDK] ✅ Crossmint wallet created:", wallet.address);
     return wallet;
   } catch (error) {
-    console.error("❌ Error creating AA wallet signer:", error);
+    console.error("[legacy SDK] ❌ Error creating AA wallet signer:", error);
     throw error;
   }
 };
@@ -146,19 +144,20 @@ export async function executeContract<
   } = options;
 
   try {
-    console.log("🚀 Starting contract execution...");
+    console.log("[legacy SDK] 🚀 Starting contract execution...");
 
     // Validate JWT if provided
     if (jwt && !validateJWTExpiration(jwt)) {
-      console.error("❌ JWT expired during contract execution");
+      console.error("[legacy SDK] ❌ JWT expired during contract execution");
       return {
         txHash: "0x" as Hex,
         success: false,
-        error: "JWT token expired. Please refresh your authentication and try again.",
+        error:
+          "JWT token expired. Please refresh your authentication and try again.",
       };
     }
 
-    console.log("📋 Contract details:", {
+    console.log("[legacy SDK] 📋 Contract details:", {
       address: params.address,
       function: params.functionName,
       args: params.args,
@@ -176,9 +175,9 @@ export async function executeContract<
         args: params.args,
         value: params.value,
       } as Parameters<typeof wallet.executeContract>[0]);
-      console.log("✅ Transaction sent successfully:", txHash);
+      console.log("[legacy SDK] ✅ Transaction sent successfully:", txHash);
     } catch (error) {
-      console.error("❌ Failed to send transaction:", error);
+      console.error("[legacy SDK] ❌ Failed to send transaction:", error);
       return {
         txHash: "0x" as Hex,
         success: false,
@@ -190,7 +189,7 @@ export async function executeContract<
     // Step 2: Wait for transaction confirmation
     let txReceipt: TransactionReceipt | undefined = undefined;
     try {
-      console.log("⏳ Waiting for transaction confirmation...");
+      console.log("[legacy SDK] ⏳ Waiting for transaction confirmation...");
 
       txReceipt = await wallet.client.public.waitForTransactionReceipt({
         hash: txHash,
@@ -198,7 +197,7 @@ export async function executeContract<
 
       // Check transaction status
       if (txReceipt?.status === "reverted") {
-        console.error("❌ Transaction reverted");
+        console.error("[legacy SDK] ❌ Transaction reverted");
         return {
           txHash,
           success: false,
@@ -206,9 +205,9 @@ export async function executeContract<
         };
       }
 
-      console.log("✅ Transaction confirmed:", txHash);
+      console.log("[legacy SDK] ✅ Transaction confirmed:", txHash);
     } catch (error) {
-      console.error("❌ Transaction confirmation failed:", error);
+      console.error("[legacy SDK] ❌ Transaction confirmation failed:", error);
       return {
         txHash,
         success: false,
@@ -222,7 +221,9 @@ export async function executeContract<
     // Step 3: Extract UserOp hash from transaction logs
     let userOpHash: Hex | undefined;
     try {
-      console.log("🔍 Looking for UserOperation hash in transaction logs...");
+      console.log(
+        "[legacy SDK] 🔍 Looking for UserOperation hash in transaction logs..."
+      );
 
       // Method 1: Try ABI decoding (more reliable)
       for (const logEntry of txReceipt.logs) {
@@ -235,7 +236,10 @@ export async function executeContract<
 
           if (decoded.eventName === "UserOperationEvent") {
             userOpHash = decoded.args.userOpHash;
-            console.log("✅ UserOp hash found via ABI decoding:", userOpHash);
+            console.log(
+              "[legacy SDK] ✅ UserOp hash found via ABI decoding:",
+              userOpHash
+            );
             break;
           }
         } catch {
@@ -251,19 +255,24 @@ export async function executeContract<
 
         if (userOpLog?.topics[1]) {
           userOpHash = userOpLog.topics[1];
-          console.log("✅ UserOp hash found via topic parsing:", userOpHash);
+          console.log(
+            "[legacy SDK] ✅ UserOp hash found via topic parsing:",
+            userOpHash
+          );
         }
       }
 
       if (!userOpHash) {
-        console.log("⚠️ No UserOperationEvent found in transaction logs");
         console.log(
-          "📝 Available log topics:",
+          "[legacy SDK] ⚠️ No UserOperationEvent found in transaction logs"
+        );
+        console.log(
+          "[legacy SDK] 📝 Available log topics:",
           txReceipt.logs.map((l) => l.topics[0])
         );
       }
     } catch (error) {
-      console.error("⚠️ Error extracting UserOp hash:", error);
+      console.error("[legacy SDK] ⚠️ Error extracting UserOp hash:", error);
     }
 
     // Step 4: Get UserOp receipt if hash was found and requested
@@ -271,7 +280,9 @@ export async function executeContract<
       undefined;
     if (userOpHash && waitForUserOpReceipt) {
       try {
-        console.log("⏳ Attempting to get UserOperation receipt...");
+        console.log(
+          "[legacy SDK] ⏳ Attempting to get UserOperation receipt..."
+        );
 
         // Get the appropriate bundler client for the chain
         // Use the chain from options if provided, otherwise default to polygon-amoy
@@ -285,7 +296,7 @@ export async function executeContract<
             });
 
             if (userOpReceipt) {
-              console.log("✅ UserOp receipt found:", {
+              console.log("[legacy SDK] ✅ UserOp receipt found:", {
                 success: userOpReceipt.success,
                 actualGasCost: userOpReceipt.actualGasCost,
                 actualGasUsed: userOpReceipt.actualGasUsed,
@@ -294,14 +305,14 @@ export async function executeContract<
             }
           } catch (receiptError) {
             console.log(
-              `⏳ Attempt ${attempt}/${maxUserOpAttempts}: UserOp receipt not found yet...`
+              `[legacy SDK] ⏳ Attempt ${attempt}/${maxUserOpAttempts}: UserOp receipt not found yet...`
             );
 
             if (attempt === maxUserOpAttempts) {
               console.error(
-                "⚠️ UserOp receipt not found after maximum attempts"
+                "[legacy SDK] ⚠️ UserOp receipt not found after maximum attempts"
               );
-              console.error("Receipt error:", receiptError);
+              console.error("[legacy SDK] Receipt error:", receiptError);
             } else {
               // Wait before next attempt
               await new Promise((resolve) =>
@@ -311,7 +322,7 @@ export async function executeContract<
           }
         }
       } catch (error) {
-        console.error("❌ Error getting UserOp receipt:", error);
+        console.error("[legacy SDK] ❌ Error getting UserOp receipt:", error);
       }
     }
 
@@ -323,8 +334,8 @@ export async function executeContract<
       success: true,
     };
 
-    console.log("🎉 Contract execution completed successfully!");
-    console.log("📊 Final result:", {
+    console.log("[legacy SDK] 🎉 Contract execution completed successfully!");
+    console.log("[legacy SDK] 📊 Final result:", {
       txHash: result.txHash,
       userOpHash: result.userOpHash,
       hasUserOpReceipt: !!result.userOpReceipt,
@@ -332,7 +343,10 @@ export async function executeContract<
 
     return result;
   } catch (error) {
-    console.error("💥 Unexpected error during contract execution:", error);
+    console.error(
+      "[legacy SDK] 💥 Unexpected error during contract execution:",
+      error
+    );
     return {
       txHash: "0x" as Hex,
       success: false,
@@ -354,11 +368,17 @@ export async function executeERC20Transfer(
     try {
       targetWallet = await createAAWalletSigner(options.jwt, options.chain);
     } catch (error) {
-      console.error("Failed to create wallet for chain:", options.chain, error);
+      console.error(
+        "[legacy SDK] ❌ Failed to create wallet for chain:",
+        options.chain,
+        error
+      );
       return {
         txHash: "0x" as Hex,
         success: false,
-        error: `Failed to create wallet for chain ${options.chain}: ${error instanceof Error ? error.message : "Unknown error"}`,
+        error: `Failed to create wallet for chain ${options.chain}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   }
