@@ -109,6 +109,6 @@ export async function getWeb3AuthSigner({
 
   return {
     provider: provider as EIP1193Provider,
-    address: accounts[0],
+    address: accounts[0] as Address,
   };
 }

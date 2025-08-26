@@ -7,15 +7,20 @@ import {
   type ExecuteContractResult,
 } from "@/lib/wallets";
 import { useAuth } from "@crossmint/client-sdk-react-ui";
-import type {
-  Chain,
-  EVMWallet,
-  Transaction,
-} from "@crossmint/client-sdk-react-ui";
+import type { Chain, EVMWallet, Transaction } from "@crossmint/wallets-sdk";
 import type { EVMSmartWallet } from "@crossmint/client-sdk-smart-wallet";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { type Address, parseUnits } from "viem";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+// Card and Alert are available; we'll switch to them when we fully card-ify the layout
 
 const USDC_AMOY_CONTRACT_ADDRESS =
   "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582" as Address; // USDC Polygon Amoy
@@ -33,13 +38,15 @@ export default function Wallet() {
   const [latestTransactionResult, setLatestTransactionResult] =
     useState<Transaction | null>(null);
 
-  // Inputs for Amoy flow
-  const [amoyRecipient, setAmoyRecipient] = useState<string>("");
-  const [amoyAmount, setAmoyAmount] = useState<string>("0.001");
+  // Inputs for Legacy flow
+  const [legacyRecipient, setLegacyRecipient] = useState<string>("");
+  const [legacyAmount, setLegacyAmount] = useState<string>("0.001");
+  const [legacyChain, setLegacyChain] = useState<string>("polygon-amoy");
 
-  // Inputs for Base Sepolia flow
-  const [baseRecipient, setBaseRecipient] = useState<string>("");
-  const [baseAmount, setBaseAmount] = useState<string>("0.001");
+  // Inputs for New SDK flow
+  const [newRecipient, setNewRecipient] = useState<string>("");
+  const [newAmount, setNewAmount] = useState<string>("0.001");
+  const [newChain, setNewChain] = useState<string>("polygon-amoy");
 
   const {
     mutate: legacyTransferUSDC,
@@ -83,17 +90,26 @@ export default function Wallet() {
     mutationFn: async (args: {
       recipient: Address;
       amount: string;
-      usdcAddress: Address;
       chain: string;
     }) => {
-      if (!jwt || !user || !wallets?.latestWallet) {
+      if (!jwt || !user) {
         return null;
       }
 
-      const wallet = wallets.latestWallet;
+      // Ensure latest wallet is created for the selected chain
+      const refreshed = await createWallets(jwt, args.chain as Chain);
+      if (refreshed) {
+        setWallets(refreshed);
+      }
 
-      const result = await wallet.send(args.recipient, "usdc", args.amount);
+      const walletToUse = refreshed?.latestWallet || wallets?.latestWallet;
+      if (!walletToUse) return null;
 
+      const result = await walletToUse.send(
+        args.recipient,
+        "usdc",
+        args.amount
+      );
       return result;
     },
     onSuccess: (result) => {
@@ -169,6 +185,54 @@ export default function Wallet() {
                 {wallets.legacyWallet.address}
               </p>
             </div>
+            {/* Legacy Transfer */}
+            <div className="space-y-2 border rounded-md p-3">
+              <div className="font-medium">Send USDC with Legacy Wallet</div>
+              <Select value={legacyChain} onValueChange={setLegacyChain}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a chain" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="polygon-amoy">Polygon Amoy</SelectItem>
+                  <SelectItem value="base-sepolia">Base Sepolia</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                placeholder="Recipient address (0x...)"
+                value={legacyRecipient}
+                onChange={(e) => setLegacyRecipient(e.target.value)}
+              />
+              <Input
+                placeholder="Amount (e.g. 0.001)"
+                value={legacyAmount}
+                onChange={(e) => setLegacyAmount(e.target.value)}
+              />
+              <Button
+                onClick={() => {
+                  const usdcAddress =
+                    legacyChain === "base-sepolia"
+                      ? USDC_BASE_SEPOLIA_CONTRACT_ADDRESS
+                      : USDC_AMOY_CONTRACT_ADDRESS;
+                  legacyTransferUSDC({
+                    recipient: legacyRecipient as Address,
+                    amount: legacyAmount,
+                    usdcAddress,
+                    chain: legacyChain,
+                  });
+                }}
+                disabled={
+                  isLegacyTransferUSDCPending ||
+                  !legacyRecipient ||
+                  !legacyAmount
+                }
+                className="w-full"
+                variant="outline"
+              >
+                {isLegacyTransferUSDCPending
+                  ? "Sending..."
+                  : "Send USDC (Legacy)"}
+              </Button>
+            </div>
 
             <div>
               <p className="text-sm text-gray-600 mb-2">
@@ -178,79 +242,46 @@ export default function Wallet() {
                 {wallets.latestWallet.address}
               </p>
             </div>
-            {/* Amoy USDC Transfer */}
-            <div className="space-y-2 border rounded-md p-3">
-              <div className="font-medium">Send USDC on Amoy</div>
-              <input
-                type="text"
-                placeholder="Recipient address (0x...)"
-                value={amoyRecipient}
-                onChange={(e) => setAmoyRecipient(e.target.value)}
-                className="w-full rounded border px-3 py-2 text-sm"
-              />
-              <input
-                type="text"
-                placeholder="Amount (e.g. 0.001)"
-                value={amoyAmount}
-                onChange={(e) => setAmoyAmount(e.target.value)}
-                className="w-full rounded border px-3 py-2 text-sm"
-              />
-              <Button
-                onClick={() =>
-                  legacyTransferUSDC({
-                    recipient: amoyRecipient as Address,
-                    amount: amoyAmount,
-                    usdcAddress: USDC_AMOY_CONTRACT_ADDRESS,
-                    chain: "polygon-amoy",
-                  })
-                }
-                disabled={
-                  isLegacyTransferUSDCPending || !amoyRecipient || !amoyAmount
-                }
-                className="w-full"
-                variant="outline"
-              >
-                {isLegacyTransferUSDCPending
-                  ? "Sending..."
-                  : "Send USDC (Amoy)"}
-              </Button>
-            </div>
 
-            {/* Base Sepolia USDC Transfer */}
+            {/* New SDK USDC Transfer */}
             <div className="space-y-2 border rounded-md p-3">
-              <div className="font-medium">Send USDC on Base Sepolia</div>
-              <input
-                type="text"
+              <div className="font-medium">Send USDC with New Wallet</div>
+              <Select value={newChain} onValueChange={setNewChain}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a chain" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="polygon-amoy">Polygon Amoy</SelectItem>
+                  <SelectItem value="base-sepolia">Base Sepolia</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
                 placeholder="Recipient address (0x...)"
-                value={baseRecipient}
-                onChange={(e) => setBaseRecipient(e.target.value)}
-                className="w-full rounded border px-3 py-2 text-sm"
+                value={newRecipient}
+                onChange={(e) => setNewRecipient(e.target.value)}
               />
-              <input
-                type="text"
+              <Input
                 placeholder="Amount (e.g. 0.001)"
-                value={baseAmount}
-                onChange={(e) => setBaseAmount(e.target.value)}
-                className="w-full rounded border px-3 py-2 text-sm"
+                value={newAmount}
+                onChange={(e) => setNewAmount(e.target.value)}
               />
               <Button
                 onClick={() =>
-                  legacyTransferUSDC({
-                    recipient: baseRecipient as Address,
-                    amount: baseAmount,
-                    usdcAddress: USDC_BASE_SEPOLIA_CONTRACT_ADDRESS,
-                    chain: "base-sepolia",
+                  latestTransferUSDC({
+                    recipient: newRecipient as Address,
+                    amount: newAmount,
+                    chain: newChain,
                   })
                 }
                 disabled={
-                  isLegacyTransferUSDCPending || !baseRecipient || !baseAmount
+                  isLatestTransferUSDCPending || !newRecipient || !newAmount
                 }
                 className="w-full"
                 variant="outline"
               >
-                {isLegacyTransferUSDCPending
+                {isLatestTransferUSDCPending
                   ? "Sending..."
-                  : "Send USDC (Base Sepolia)"}
+                  : "Send USDC (New Wallet)"}
               </Button>
             </div>
 
@@ -314,6 +345,32 @@ export default function Wallet() {
                       {legacyTransactionResult.error}
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {latestTransferUSDCError && (
+              <div className="text-red-500 text-sm">
+                New wallet transfer failed: {latestTransferUSDCError.message}
+              </div>
+            )}
+
+            {latestTransactionResult && (
+              <div className="text-sm text-green-600">
+                Transfer submitted with new wallet!
+                <div className="space-y-2 mt-2">
+                  <div className="font-mono text-xs break-all bg-gray-50 p-2 rounded">
+                    <div className="font-semibold mb-1">Transaction Hash:</div>
+                    {latestTransactionResult.hash}
+                  </div>
+                  <a
+                    href={latestTransactionResult.explorerLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 underline text-xs break-all"
+                  >
+                    View on Explorer
+                  </a>
                 </div>
               </div>
             )}
