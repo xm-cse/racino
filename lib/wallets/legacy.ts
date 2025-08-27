@@ -83,12 +83,13 @@ export const xm = SmartWalletSDK.init({
   clientApiKey: crossmintLegacyApiKey, // old project client api key
 });
 
-export const createLegacyWallet = async (
+export const getOrCreateLegacyWallet = async (
   jwt: string,
   selectedChain?: string
 ) => {
   try {
     // Use provided chain or default to environment chain
+    // legacy wallets do not support apechain or curtis
     const targetChain =
       selectedChain === "curtis" || selectedChain === "apechain"
         ? chain
@@ -115,10 +116,10 @@ export const createLegacyWallet = async (
       }
     );
 
-    console.log("[legacy SDK] ✅ Crossmint wallet created:", wallet.address);
+    console.log("[legacy SDK] ✅ Crossmint wallet:", wallet.address);
     return wallet;
   } catch (error) {
-    console.error("[legacy SDK] ❌ Error creating AA wallet signer:", error);
+    console.error("[legacy SDK] ❌ Error getting or creating wallet:", error);
     throw error;
   }
 };
@@ -160,6 +161,30 @@ export async function executeContract<
       };
     }
 
+    // If a different chain is specified, switch wallet to that chain
+    let targetWallet = wallet;
+    if (options?.chain && options.jwt) {
+      try {
+        targetWallet = await getOrCreateLegacyWallet(
+          options.jwt,
+          options.chain
+        );
+      } catch (error) {
+        console.error(
+          "[legacy SDK] ❌ Failed to get or create wallet for chain:",
+          options.chain,
+          error
+        );
+        return {
+          txHash: "0x" as Hex,
+          success: false,
+          error: `Failed to get or create wallet for chain ${options.chain}: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+        };
+      }
+    }
+
     console.log("[legacy SDK] 📋 Contract details:", {
       address: params.address,
       function: params.functionName,
@@ -171,13 +196,13 @@ export async function executeContract<
     let txHash: Hex;
 
     try {
-      txHash = await wallet.executeContract({
+      txHash = await targetWallet.executeContract({
         address: params.address,
         abi: params.abi,
         functionName: params.functionName,
         args: params.args,
         value: params.value,
-      } as Parameters<typeof wallet.executeContract>[0]);
+      } as Parameters<typeof targetWallet.executeContract>[0]);
       console.log("[legacy SDK] ✅ Transaction sent successfully:", txHash);
     } catch (error) {
       console.error("[legacy SDK] ❌ Failed to send transaction:", error);
@@ -194,7 +219,7 @@ export async function executeContract<
     try {
       console.log("[legacy SDK] ⏳ Waiting for transaction confirmation...");
 
-      txReceipt = await wallet.client.public.waitForTransactionReceipt({
+      txReceipt = await targetWallet.client.public.waitForTransactionReceipt({
         hash: txHash,
       });
 
@@ -365,27 +390,6 @@ export async function executeERC20Transfer(
   amount: bigint,
   options?: ExecuteContractOptions
 ): Promise<ExecuteContractResult> {
-  // If a different chain is specified, create a new wallet for that chain
-  let targetWallet = wallet;
-  if (options?.chain && options.jwt) {
-    try {
-      targetWallet = await createLegacyWallet(options.jwt, options.chain);
-    } catch (error) {
-      console.error(
-        "[legacy SDK] ❌ Failed to create wallet for chain:",
-        options.chain,
-        error
-      );
-      return {
-        txHash: "0x" as Hex,
-        success: false,
-        error: `Failed to create wallet for chain ${options.chain}: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-      };
-    }
-  }
-
   const ERC20_TRANSFER_ABI = [
     {
       inputs: [
@@ -400,7 +404,7 @@ export async function executeERC20Transfer(
   ] as const;
 
   return executeContract(
-    targetWallet,
+    wallet,
     {
       address: tokenAddress,
       abi: ERC20_TRANSFER_ABI,
