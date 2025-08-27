@@ -89,7 +89,10 @@ export const createLegacyWallet = async (
 ) => {
   try {
     // Use provided chain or default to environment chain
-    const targetChain = selectedChain || chain;
+    const targetChain =
+      selectedChain === "curtis" || selectedChain === "apechain"
+        ? chain
+        : selectedChain || chain;
 
     const { provider } = await getWeb3AuthSigner({
       clientId: web3AuthClientId,
