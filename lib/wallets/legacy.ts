@@ -27,6 +27,7 @@ import {
 import { bundlerClients } from "@/lib/bundler";
 import type { GetUserOperationReceiptReturnType } from "viem/account-abstraction";
 import { validateJWTExpiration } from "@/lib/web3auth/auth";
+import type { Chain } from "@crossmint/wallets-sdk";
 
 export interface ExecuteContractParams<
   TAbi extends Abi,
@@ -57,7 +58,7 @@ export interface ExecuteContractOptions {
   /** JWT token for validation (optional but recommended) */
   jwt?: string;
   // Add chain parameter for transaction-specific chain selection
-  chain?: string;
+  chain?: Chain;
 }
 
 // EntryPoint UserOperationEvent ABI

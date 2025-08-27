@@ -9,7 +9,7 @@ export const web3AuthNetwork = process.env.NEXT_PUBLIC_WEB3AUTH_NETWORK ?? "";
 export const web3AuthVerifierId =
   process.env.NEXT_PUBLIC_WEB3AUTH_VERIFIER_ID ?? "";
 export const chain = (process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK ??
-  "") as Chain;
+  "polygon") as Chain;
 
 // assert that all the variables are set
 const values = [

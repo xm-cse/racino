@@ -6,6 +6,7 @@ import {
 } from "@crossmint/client-sdk-react-ui";
 import { crossmintLegacyApiKey } from "@/lib/config";
 
+// to replace with your own auth provider
 export default function AuthProvider({
   children,
 }: {
@@ -13,13 +14,7 @@ export default function AuthProvider({
 }) {
   return (
     <CrossmintProvider apiKey={crossmintLegacyApiKey}>
-      <CrossmintAuthProvider
-        embeddedWallets={{
-          createOnLogin: "off",
-        }}
-      >
-        {children}
-      </CrossmintAuthProvider>
+      <CrossmintAuthProvider>{children}</CrossmintAuthProvider>
     </CrossmintProvider>
   );
 }

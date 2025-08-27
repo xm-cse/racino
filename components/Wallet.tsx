@@ -22,11 +22,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { chain } from "@/lib/config";
 
-const USDC_AMOY_CONTRACT_ADDRESS =
-  "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582" as Address; // USDC Polygon Amoy
-const USDC_BASE_SEPOLIA_CONTRACT_ADDRESS =
-  "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address; // USDC Base Sepolia
+const USDC_POLYGON_CONTRACT_ADDRESS =
+  "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359" as Address; // USDC Polygon
+const USDC_BASE_CONTRACT_ADDRESS =
+  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address; // USDC Base
 
 const erc721TransferAbi = [
   {
@@ -56,17 +57,17 @@ export default function Wallet() {
   // Inputs for Legacy flow
   const [legacyRecipient, setLegacyRecipient] = useState<string>("");
   const [legacyAmount, setLegacyAmount] = useState<string>("0.001");
-  const [legacyChain, setLegacyChain] = useState<string>("polygon-amoy");
+  const [legacyChain, setLegacyChain] = useState<Chain>(chain);
 
   // Inputs for New SDK flow
   const [newRecipient, setNewRecipient] = useState<string>("");
   const [newAmount, setNewAmount] = useState<string>("0.001");
-  const [newChain, setNewChain] = useState<string>("polygon-amoy");
+  const [newChain, setNewChain] = useState<Chain>(chain);
   // Inputs for New SDK NFT transfer
   const [nftRecipient, setNftRecipient] = useState<string>("");
   const [nftContract, setNftContract] = useState<string>("");
   const [nftTokenId, setNftTokenId] = useState<string>("");
-  const [nftChain, setNftChain] = useState<string>("polygon-amoy");
+  const [nftChain, setNftChain] = useState<Chain>(chain);
 
   const {
     mutate: legacyTransferUSDC,
@@ -77,7 +78,7 @@ export default function Wallet() {
       recipient: Address;
       amount: string;
       usdcAddress: Address;
-      chain: string;
+      chain: Chain;
     }) => {
       if (!jwt || !user || !wallets?.legacyWallet) {
         return null;
@@ -110,14 +111,14 @@ export default function Wallet() {
     mutationFn: async (args: {
       recipient: Address;
       amount: string;
-      chain: string;
+      chain: Chain;
     }) => {
       if (!jwt || !user) {
         return null;
       }
 
       // Ensure latest wallet is created for the selected chain
-      const refreshed = await getOrCreateWallets(jwt, args.chain as Chain);
+      const refreshed = await getOrCreateWallets(jwt, args.chain);
       if (refreshed) {
         setWallets(refreshed);
       }
@@ -151,10 +152,10 @@ export default function Wallet() {
       recipient: Address;
       contract: Address;
       tokenId: string;
-      chain: string;
+      chain: Chain;
     }) => {
       if (!jwt || !user) return null;
-      const refreshed = await getOrCreateWallets(jwt, args.chain as Chain);
+      const refreshed = await getOrCreateWallets(jwt, args.chain);
       if (refreshed) setWallets(refreshed);
       const walletToUse = refreshed?.latestWallet || wallets?.latestWallet;
       if (!walletToUse) return null;
@@ -225,7 +226,9 @@ export default function Wallet() {
             disabled={isInitWalletsPending}
             className="w-full"
           >
-            {isInitWalletsPending ? "Initializing wallets..." : "Initialize Wallets"}
+            {isInitWalletsPending
+              ? "Initializing wallets..."
+              : "Initialize Wallets"}
           </Button>
         ) : (
           <div className="space-y-3">
@@ -240,13 +243,16 @@ export default function Wallet() {
             {/* Legacy Transfer */}
             <div className="space-y-2 border rounded-md p-3">
               <div className="font-medium">Send USDC with Legacy Wallet</div>
-              <Select value={legacyChain} onValueChange={setLegacyChain}>
+              <Select
+                value={legacyChain}
+                onValueChange={(value) => setLegacyChain(value as Chain)}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a chain" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="polygon-amoy">Polygon Amoy</SelectItem>
-                  <SelectItem value="base-sepolia">Base Sepolia</SelectItem>
+                  <SelectItem value="polygon">Polygon</SelectItem>
+                  <SelectItem value="base">Base</SelectItem>
                 </SelectContent>
               </Select>
               <Input
@@ -262,9 +268,9 @@ export default function Wallet() {
               <Button
                 onClick={() => {
                   const usdcAddress =
-                    legacyChain === "base-sepolia"
-                      ? USDC_BASE_SEPOLIA_CONTRACT_ADDRESS
-                      : USDC_AMOY_CONTRACT_ADDRESS;
+                    legacyChain === "base"
+                      ? USDC_BASE_CONTRACT_ADDRESS
+                      : USDC_POLYGON_CONTRACT_ADDRESS;
                   legacyTransferUSDC({
                     recipient: legacyRecipient as Address,
                     amount: legacyAmount,
@@ -298,13 +304,16 @@ export default function Wallet() {
             {/* New SDK USDC Transfer */}
             <div className="space-y-2 border rounded-md p-3">
               <div className="font-medium">Send USDC with New Wallet</div>
-              <Select value={newChain} onValueChange={setNewChain}>
+              <Select
+                value={newChain}
+                onValueChange={(value) => setNewChain(value as Chain)}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a chain" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="polygon-amoy">Polygon Amoy</SelectItem>
-                  <SelectItem value="base-sepolia">Base Sepolia</SelectItem>
+                  <SelectItem value="polygon">Polygon</SelectItem>
+                  <SelectItem value="base">Base</SelectItem>
                 </SelectContent>
               </Select>
               <Input
@@ -343,14 +352,17 @@ export default function Wallet() {
                 <CardTitle>NFT Transfer (New Wallet)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Select value={nftChain} onValueChange={setNftChain}>
+                <Select
+                  value={nftChain}
+                  onValueChange={(value) => setNftChain(value as Chain)}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a chain" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="polygon-amoy">Polygon Amoy</SelectItem>
-                    <SelectItem value="base-sepolia">Base Sepolia</SelectItem>
-                    <SelectItem value="curtis">Curtis</SelectItem>
+                    <SelectItem value="polygon">Polygon</SelectItem>
+                    <SelectItem value="base">Base</SelectItem>
+                    <SelectItem value="apechain">ApeChain</SelectItem>
                   </SelectContent>
                 </Select>
                 <Input
