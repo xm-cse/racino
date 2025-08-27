@@ -18,7 +18,7 @@ import {
 } from "@crossmint/wallets-sdk";
 import type { EIP1193Provider } from "viem";
 
-export const createWallet = async (jwt: string, selectedChain?: Chain) => {
+export const getOrCreateWallet = async (jwt: string, selectedChain?: Chain) => {
   // Use provided chain or default to environment chain
   const targetChain = selectedChain || chain;
 
@@ -44,13 +44,13 @@ export const createWallet = async (jwt: string, selectedChain?: Chain) => {
   const crossmintWallets = CrossmintWallets.from(crossmint);
 
   const wallet = await crossmintWallets.getOrCreateWallet({
-    chain: selectedChain ?? "polygon-amoy",
+    chain: targetChain,
     signer: {
       type: "external-wallet",
       address,
       provider: provider as EIP1193Provider,
     },
   });
-  console.log("[latest SDK] ✅ Crossmint wallet created:", wallet.address);
+  console.log("[latest SDK] ✅ Crossmint wallet:", wallet.address);
   return EVMWallet.from(wallet);
 };

@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import {
-  createWallets,
+  getOrCreateWallets,
   executeERC20Transfer,
   type ExecuteContractResult,
 } from "@/lib/wallets";
@@ -117,7 +117,7 @@ export default function Wallet() {
       }
 
       // Ensure latest wallet is created for the selected chain
-      const refreshed = await createWallets(jwt, args.chain as Chain);
+      const refreshed = await getOrCreateWallets(jwt, args.chain as Chain);
       if (refreshed) {
         setWallets(refreshed);
       }
@@ -154,7 +154,7 @@ export default function Wallet() {
       chain: string;
     }) => {
       if (!jwt || !user) return null;
-      const refreshed = await createWallets(jwt, args.chain as Chain);
+      const refreshed = await getOrCreateWallets(jwt, args.chain as Chain);
       if (refreshed) setWallets(refreshed);
       const walletToUse = refreshed?.latestWallet || wallets?.latestWallet;
       if (!walletToUse) return null;
@@ -176,15 +176,15 @@ export default function Wallet() {
   });
 
   const {
-    mutate: getOrCreateWallets,
-    isPending: isGetOrCreateWalletsPending,
-    error: getOrCreateWalletsError,
+    mutate: initWallets,
+    isPending: isInitWalletsPending,
+    error: initWalletsError,
   } = useMutation({
-    mutationFn: async (args?: { chain?: string }) => {
+    mutationFn: async () => {
       if (!jwt || !user) {
         return null;
       }
-      return createWallets(jwt, args?.chain as Chain);
+      return getOrCreateWallets(jwt);
     },
     onSuccess: (wallets) => {
       setWallets(wallets || null);
@@ -210,24 +210,22 @@ export default function Wallet() {
   return (
     <div className="flex justify-center items-center min-h-[200px] w-full">
       <div className="max-w-md w-full p-4 space-y-4">
-        {getOrCreateWalletsError ? (
+        {initWalletsError ? (
           <div className="space-y-3">
             <div className="text-red-500 text-sm">
-              Error: {getOrCreateWalletsError.message}
+              Error: {initWalletsError.message}
             </div>
-            <Button onClick={() => getOrCreateWallets({})} className="w-full">
+            <Button onClick={() => initWallets()} className="w-full">
               Try Again
             </Button>
           </div>
         ) : !wallets ? (
           <Button
-            onClick={() => getOrCreateWallets({})}
-            disabled={isGetOrCreateWalletsPending}
+            onClick={() => initWallets()}
+            disabled={isInitWalletsPending}
             className="w-full"
           >
-            {isGetOrCreateWalletsPending
-              ? "Creating wallets..."
-              : "Create Wallets"}
+            {isInitWalletsPending ? "Initializing wallets..." : "Initialize Wallets"}
           </Button>
         ) : (
           <div className="space-y-3">
