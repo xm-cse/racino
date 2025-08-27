@@ -20,12 +20,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-// Card and Alert are available; we'll switch to them when we fully card-ify the layout
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const USDC_AMOY_CONTRACT_ADDRESS =
   "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582" as Address; // USDC Polygon Amoy
 const USDC_BASE_SEPOLIA_CONTRACT_ADDRESS =
   "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address; // USDC Base Sepolia
+
+const erc721TransferAbi = [
+  {
+    inputs: [
+      { name: "from", type: "address" },
+      { name: "to", type: "address" },
+      { name: "tokenId", type: "uint256" },
+    ],
+    name: "safeTransferFrom",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+] as const;
 
 export default function Wallet() {
   const { user, jwt } = useAuth();
@@ -47,6 +62,11 @@ export default function Wallet() {
   const [newRecipient, setNewRecipient] = useState<string>("");
   const [newAmount, setNewAmount] = useState<string>("0.001");
   const [newChain, setNewChain] = useState<string>("polygon-amoy");
+  // Inputs for New SDK NFT transfer
+  const [nftRecipient, setNftRecipient] = useState<string>("");
+  const [nftContract, setNftContract] = useState<string>("");
+  const [nftTokenId, setNftTokenId] = useState<string>("");
+  const [nftChain, setNftChain] = useState<string>("polygon-amoy");
 
   const {
     mutate: legacyTransferUSDC,
@@ -111,6 +131,40 @@ export default function Wallet() {
         args.amount
       );
       return result;
+    },
+    onSuccess: (result) => {
+      // Cast to concrete Transaction<false>; sendTransaction returns non-prepare by default
+      setLatestTransactionResult(result as Transaction<false>);
+    },
+    onError: (error) => {
+      console.error(error);
+      setLatestTransactionResult(null);
+    },
+  });
+
+  const {
+    mutate: latestTransferNFT,
+    isPending: isLatestTransferNFTPending,
+    error: latestTransferNFTError,
+  } = useMutation({
+    mutationFn: async (args: {
+      recipient: Address;
+      contract: Address;
+      tokenId: string;
+      chain: string;
+    }) => {
+      if (!jwt || !user) return null;
+      const refreshed = await createWallets(jwt, args.chain as Chain);
+      if (refreshed) setWallets(refreshed);
+      const walletToUse = refreshed?.latestWallet || wallets?.latestWallet;
+      if (!walletToUse) return null;
+      // ERC-721 safeTransferFrom(from, to, tokenId)
+      return walletToUse.sendTransaction({
+        to: args.contract,
+        functionName: "safeTransferFrom",
+        abi: erc721TransferAbi,
+        args: [walletToUse.address, args.recipient, BigInt(args.tokenId)],
+      });
     },
     onSuccess: (result) => {
       setLatestTransactionResult(result);
@@ -284,6 +338,68 @@ export default function Wallet() {
                   : "Send USDC (New Wallet)"}
               </Button>
             </div>
+
+            {/* New SDK NFT Transfer */}
+            <Card>
+              <CardHeader>
+                <CardTitle>NFT Transfer (New Wallet)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Select value={nftChain} onValueChange={setNftChain}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a chain" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="polygon-amoy">Polygon Amoy</SelectItem>
+                    <SelectItem value="base-sepolia">Base Sepolia</SelectItem>
+                    <SelectItem value="curtis">Curtis</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="Recipient address (0x...)"
+                  value={nftRecipient}
+                  onChange={(e) => setNftRecipient(e.target.value)}
+                />
+                <Input
+                  placeholder="Contract address (0x...)"
+                  value={nftContract}
+                  onChange={(e) => setNftContract(e.target.value)}
+                />
+                <Input
+                  placeholder="Token ID (e.g. 1)"
+                  value={nftTokenId}
+                  onChange={(e) => setNftTokenId(e.target.value)}
+                />
+                <Button
+                  onClick={() =>
+                    latestTransferNFT({
+                      recipient: nftRecipient as Address,
+                      contract: nftContract as Address,
+                      tokenId: nftTokenId,
+                      chain: nftChain,
+                    })
+                  }
+                  disabled={
+                    isLatestTransferNFTPending ||
+                    !nftRecipient ||
+                    !nftContract ||
+                    !nftTokenId
+                  }
+                  className="w-full"
+                  variant="outline"
+                >
+                  {isLatestTransferNFTPending ? "Sending..." : "Send NFT"}
+                </Button>
+                {latestTransferNFTError && (
+                  <Alert variant="destructive">
+                    <AlertTitle>NFT transfer failed</AlertTitle>
+                    <AlertDescription>
+                      {latestTransferNFTError.message}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
 
             {legacyTransferUSDCError && (
               <div className="text-red-500 text-sm">
