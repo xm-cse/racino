@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { chain } from "@/lib/config";
+import { listNftToken } from "@/lib/opensea";
 
 const USDC_POLYGON_CONTRACT_ADDRESS =
   "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359" as Address; // USDC Polygon
@@ -53,6 +54,9 @@ export default function Wallet() {
     useState<ExecuteContractResult | null>(null);
   const [latestTransactionResult, setLatestTransactionResult] =
     useState<Transaction | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [listNFTResult, setListNFTResult] = useState<string | null>(null);
+  const [listNFTAmount, setListNFTAmount] = useState<string>("0.001");
 
   // Inputs for Legacy flow
   const [legacyRecipient, setLegacyRecipient] = useState<string>("");
@@ -196,6 +200,35 @@ export default function Wallet() {
     },
   });
 
+  const { mutate: listNFT, isPending: isListNFTPending } = useMutation({
+    mutationFn: async (args: {
+      recipient: Address;
+      contract: Address;
+      tokenId: string;
+      listingAmount: string;
+      chain: Chain;
+    }) => {
+      if (!jwt || !user) return null;
+      const refreshed = await getOrCreateWallets(jwt, args.chain);
+      if (refreshed) setWallets(refreshed);
+      const walletToUse = refreshed?.legacyWallet || wallets?.legacyWallet;
+      if (!walletToUse) return null;
+      return listNftToken({
+        aaWallet: walletToUse,
+        tokenAddress: args.contract,
+        tokenId: args.tokenId,
+        listingAmount: args.listingAmount,
+      });
+    },
+    onSuccess: (result) => {
+      setListNFTResult(result);
+    },
+    onError: (error) => {
+      console.error(error);
+      setListNFTResult(null);
+    },
+  });
+
   if (!user || !jwt) {
     return (
       <div className="flex justify-center items-center min-h-[200px] w-full">
@@ -299,6 +332,32 @@ export default function Wallet() {
               <p className="font-mono text-sm break-all bg-gray-100 p-2 rounded">
                 {wallets.latestWallet.address}
               </p>
+            </div>
+            {/* Legacy NFT Listing */}
+            <div className="space-y-2 border rounded-md p-3">
+              <div className="font-medium">List NFT with Legacy Wallet</div>
+              <Input
+                placeholder="Listing amount (e.g. 0.001)"
+                value={listNFTAmount}
+                onChange={(e) => setListNFTAmount(e.target.value)}
+              />
+              <Button
+                onClick={() => {
+                  listNFT({
+                    recipient: "0xa064b2E2B6f9CEaC2c60a81369aeC35C0FBe467F",
+                    contract: "0xa9a6a3626993d487d2dbda3173cf58ca1a9d9e9f",
+                    tokenId:
+                      "17307355994943782298465196873990082686427308218068658426141694093857785901042",
+                    listingAmount: listNFTAmount,
+                    chain: legacyChain,
+                  });
+                }}
+                disabled={isListNFTPending || !listNFTAmount}
+                className="w-full"
+                variant="outline"
+              >
+                {isListNFTPending ? "Listing..." : "List NFT (Legacy)"}
+              </Button>
             </div>
 
             {/* New SDK USDC Transfer */}

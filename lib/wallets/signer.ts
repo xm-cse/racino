@@ -21,8 +21,11 @@ export class SignerWrapper implements Signer {
     public provider: Provider | null = null
   ) {}
 
-  static fromLegacyWallet(legacyWallet: EVMSmartWallet): SignerWrapper {
-    return new SignerWrapper(legacyWallet);
+  static fromLegacyWallet(
+    legacyWallet: EVMSmartWallet,
+    provider?: Provider
+  ): SignerWrapper {
+    return new SignerWrapper(legacyWallet, provider);
   }
 
   connect(_provider: null | Provider): Signer {
@@ -116,6 +119,6 @@ export class SignerWrapper implements Signer {
   }
 
   getAddress(): Promise<string> {
-    return Promise.resolve(this.legacyWallet.client.wallet.getAddress());
+    return Promise.resolve(this.legacyWallet.address);
   }
 }
