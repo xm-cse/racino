@@ -11,6 +11,10 @@ export const web3AuthVerifierId =
 export const chain = (process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK ??
   "polygon") as Chain;
 
+// optional
+export const openseaApiKey = process.env.NEXT_PUBLIC_OPENSEA_API_KEY ?? "";
+export const polygonAlchemyRpcUrl = process.env.NEXT_PUBLIC_POLYGON_ALCHEMY_RPC_URL ?? "";
+
 // assert that all the variables are set
 const values = [
   crossmintLegacyApiKey,
