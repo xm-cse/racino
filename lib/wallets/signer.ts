@@ -116,6 +116,6 @@ export class SignerWrapper implements Signer {
   }
 
   getAddress(): Promise<string> {
-    return Promise.resolve(this.legacyWallet.client.wallet.getAddress());
+    return Promise.resolve(this.legacyWallet.address);
   }
 }
