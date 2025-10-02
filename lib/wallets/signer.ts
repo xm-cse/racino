@@ -13,7 +13,8 @@ import type {
   TypedDataField,
 } from "ethers";
 import { TransactionResponse, Signature } from "ethers";
-import type { Address, Hex } from "viem";
+import type { SignTypedDataParameters, Address, Hex } from "viem";
+import { toBigInt } from "ethers";
 
 export class SignerWrapper implements Signer {
   constructor(
@@ -28,30 +29,81 @@ export class SignerWrapper implements Signer {
     return new SignerWrapper(legacyWallet, provider);
   }
 
-  connect(_provider: null | Provider): Signer {
-    throw new Error("[SignerWrapper] Connect not implemented.");
+  connect(provider: null | Provider): Signer {
+    return new SignerWrapper(this.legacyWallet, provider);
   }
 
-  getNonce(_blockTag?: BlockTag): Promise<number> {
-    throw new Error("[SignerWrapper] Get nonce not implemented.");
+  async getNonce(blockTag?: BlockTag): Promise<number> {
+    if (!this.provider) {
+      throw new Error("[SignerWrapper] Provider required for getNonce");
+    }
+    const address = this.legacyWallet.address;
+    return this.provider.getTransactionCount(address, blockTag);
   }
 
   populateCall(_tx: TransactionRequest): Promise<TransactionLike<string>> {
     throw new Error("[SignerWrapper] Populate call not implemented.");
   }
 
-  populateTransaction(
-    _tx: TransactionRequest
+  async populateTransaction(
+    tx: TransactionRequest
   ): Promise<TransactionLike<string>> {
-    throw new Error("[SignerWrapper] Populate transaction not implemented.");
+    if (!this.provider) {
+      throw new Error(
+        "[SignerWrapper] Provider required for populateTransaction"
+      );
+    }
+
+    const populated = { ...tx };
+
+    // Add from address if not present
+    if (!populated.from) {
+      populated.from = this.legacyWallet.address;
+    }
+
+    // Add chain ID if not present
+    if (!populated.chainId) {
+      const network = await this.provider.getNetwork();
+      populated.chainId = network.chainId;
+    }
+
+    // Add nonce if not present
+    if (populated.nonce == null) {
+      populated.nonce = await this.getNonce();
+    }
+
+    // Estimate gas if not present
+    if (!populated.gasLimit) {
+      populated.gasLimit = await this.provider.estimateGas(populated);
+    }
+
+    return populated as TransactionLike<string>;
   }
 
-  estimateGas(_tx: TransactionRequest): Promise<bigint> {
-    throw new Error("[SignerWrapper] Estimate gas not implemented.");
+  async estimateGas(tx: TransactionRequest): Promise<bigint> {
+    if (!this.provider) {
+      throw new Error("[SignerWrapper] Provider required for estimateGas");
+    }
+
+    const txRequest = { ...tx };
+    if (!txRequest.from) {
+      txRequest.from = this.legacyWallet.address;
+    }
+
+    return this.provider.estimateGas(txRequest);
   }
 
-  call(_tx: TransactionRequest): Promise<string> {
-    throw new Error("[SignerWrapper] Call not implemented.");
+  async call(tx: TransactionRequest): Promise<string> {
+    if (!this.provider) {
+      throw new Error("[SignerWrapper] Provider required for call");
+    }
+
+    const txRequest = { ...tx };
+    if (!txRequest.from) {
+      txRequest.from = this.legacyWallet.address;
+    }
+
+    return this.provider.call(txRequest);
   }
 
   resolveName(_name: string): Promise<null | string> {
@@ -63,49 +115,101 @@ export class SignerWrapper implements Signer {
   }
 
   async sendTransaction(tx: TransactionRequest): Promise<TransactionResponse> {
-    const txHash = await this.legacyWallet.client.wallet.sendTransaction({
-      to: tx.to as Address,
-      value: tx.value as bigint,
-      data: tx.data as Hex,
-    });
+    try {
+      // Populate transaction if needed
+      const populatedTx = await this.populateTransaction(tx);
+      const txHash = await this.legacyWallet.client.wallet.sendTransaction({
+        to: populatedTx.to as Address,
+        value: populatedTx.value ? toBigInt(populatedTx.value) : 0n,
+        data: (populatedTx.data as Hex) || "0x",
+      });
 
-    return new TransactionResponse(
-      {
-        ...tx,
-        chainId: tx.chainId as bigint,
-        accessList: tx.accessList as AccessList,
-        to: tx.to as Address,
-        value: tx.value as bigint,
-        signature: new Signature(txHash, "0", "0", 27),
-        hash: txHash,
-        blockNumber: null,
-        blockHash: null,
-        from: tx.from as Address,
-        index: 0,
-        type: 0,
-        nonce: 0,
-        gasPrice: 0n,
-        gasLimit: 0n,
-        maxPriorityFeePerGas: 0n,
-        maxFeePerGas: 0n,
-        maxFeePerBlobGas: 0n,
-        data: tx.data as Hex,
-        authorizationList: [],
-      },
-      this.provider as Provider
-    );
+      // Wait for the actual transaction receipt
+      if (this.provider) {
+        await this.provider.waitForTransaction(txHash);
+        const transaction = await this.provider.getTransaction(txHash);
+        if (transaction) {
+          return transaction;
+        }
+      }
+
+      return new TransactionResponse(
+        {
+          ...populatedTx,
+          chainId: tx.chainId as bigint,
+          accessList: tx.accessList as AccessList,
+          to: tx.to as Address,
+          value: tx.value as bigint,
+          signature: new Signature(txHash, "0", "0", 27),
+          hash: txHash,
+          blockNumber: null,
+          blockHash: null,
+          from: tx.from as Address,
+          index: 0,
+          type: 0,
+          nonce: 0,
+          gasPrice: 0n,
+          gasLimit: 0n,
+          maxPriorityFeePerGas: 0n,
+          maxFeePerGas: 0n,
+          maxFeePerBlobGas: 0n,
+          data: tx.data as Hex,
+          authorizationList: [],
+        },
+        this.provider as Provider
+      );
+    } catch (error) {
+      console.error("[SignerWrapper] Failed to send transaction:", error);
+      throw error;
+    }
   }
 
   signMessage(_message: string | Uint8Array): Promise<string> {
-    throw new Error("[SignerWrapper] Sign message not implemented.");
+    // Convert ethers message to viem message
+    // When message is a Uint8Array, it is a raw message
+    const msg = _message instanceof Uint8Array ? { raw: _message } : _message;
+    return this.legacyWallet.client.wallet.signMessage({
+      message: msg,
+    });
   }
 
-  signTypedData(
+  async signTypedData(
     _domain: TypedDataDomain,
     _types: Record<string, Array<TypedDataField>>,
     _value: Record<string, unknown>
   ): Promise<string> {
-    throw new Error("[SignerWrapper] Sign typed data not implemented.");
+    // Convert ethers domain to viem domain
+    const domain: SignTypedDataParameters["domain"] = {
+      ...(_domain.name && { name: _domain.name }),
+      ...(_domain.version && { version: _domain.version }),
+      ...(_domain.chainId && { chainId: toBigInt(_domain.chainId) }),
+      ...(_domain.verifyingContract && {
+        verifyingContract: _domain.verifyingContract as `0x${string}`,
+      }),
+      ...(_domain.salt && { salt: _domain.salt as `0x${string}` }),
+    };
+
+    // Convert ethers types to viem types
+    // ethers TypedDataField[] needs to be converted to viem's format
+    const types = Object.fromEntries(
+      Object.entries(_types)
+        .filter(([key]) => key !== "EIP712Domain")
+        .map(([key, fields]) => [
+          key,
+          fields.map((field) => ({
+            name: field.name,
+            type: field.type,
+          })),
+        ])
+    );
+
+    // Sign with viem
+    return this.legacyWallet.client.wallet.signTypedData({
+      domain,
+      types,
+      primaryType: Object.keys(_types).find((t) => t !== "EIP712Domain") || "",
+      message: _value,
+    });
   }
 
   populateAuthorization(
