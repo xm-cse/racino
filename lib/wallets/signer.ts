@@ -5,6 +5,8 @@ import type {
   Authorization,
   AuthorizationRequest,
   BlockTag,
+  FeeData,
+  Network,
   Provider,
   Signer,
   TransactionLike,
@@ -12,11 +14,11 @@ import type {
   TypedDataDomain,
   TypedDataField,
 } from "ethers";
-import { TransactionResponse, Signature } from "ethers";
-import type { SignTypedDataParameters, Address, Hex } from "viem";
-import { toBigInt } from "ethers";
+import { Signature, toBigInt, TransactionResponse } from "ethers";
+import type { Address, Hex } from "viem";
 
 export class SignerWrapper implements Signer {
+  readonly _isSigner: boolean = true; // make it compatible with previous version of ethers
   constructor(
     private readonly legacyWallet: EVMSmartWallet,
     public provider: Provider | null = null
@@ -34,10 +36,9 @@ export class SignerWrapper implements Signer {
   }
 
   async getNonce(blockTag?: BlockTag): Promise<number> {
-    if (!this.provider) {
-      throw new Error("[SignerWrapper] Provider required for getNonce");
-    }
+    this._checkProvider("getNonce");
     const address = this.legacyWallet.address;
+    // @ts-expect-error - provider is checked in _checkProvider
     return this.provider.getTransactionCount(address, blockTag);
   }
 
@@ -48,11 +49,7 @@ export class SignerWrapper implements Signer {
   async populateTransaction(
     tx: TransactionRequest
   ): Promise<TransactionLike<string>> {
-    if (!this.provider) {
-      throw new Error(
-        "[SignerWrapper] Provider required for populateTransaction"
-      );
-    }
+    this._checkProvider("populateTransaction");
 
     const populated = { ...tx };
 
@@ -63,6 +60,7 @@ export class SignerWrapper implements Signer {
 
     // Add chain ID if not present
     if (!populated.chainId) {
+      // @ts-expect-error - provider is checked in _checkProvider
       const network = await this.provider.getNetwork();
       populated.chainId = network.chainId;
     }
@@ -74,6 +72,7 @@ export class SignerWrapper implements Signer {
 
     // Estimate gas if not present
     if (!populated.gasLimit) {
+      // @ts-expect-error - provider is checked in _checkProvider
       populated.gasLimit = await this.provider.estimateGas(populated);
     }
 
@@ -81,28 +80,26 @@ export class SignerWrapper implements Signer {
   }
 
   async estimateGas(tx: TransactionRequest): Promise<bigint> {
-    if (!this.provider) {
-      throw new Error("[SignerWrapper] Provider required for estimateGas");
-    }
+    this._checkProvider("estimateGas");
 
     const txRequest = { ...tx };
     if (!txRequest.from) {
       txRequest.from = this.legacyWallet.address;
     }
 
+    // @ts-expect-error - provider is checked in _checkProvider
     return this.provider.estimateGas(txRequest);
   }
 
   async call(tx: TransactionRequest): Promise<string> {
-    if (!this.provider) {
-      throw new Error("[SignerWrapper] Provider required for call");
-    }
+    this._checkProvider("call");
 
     const txRequest = { ...tx };
     if (!txRequest.from) {
       txRequest.from = this.legacyWallet.address;
     }
 
+    // @ts-expect-error - provider is checked in _checkProvider
     return this.provider.call(txRequest);
   }
 
@@ -224,5 +221,56 @@ export class SignerWrapper implements Signer {
 
   getAddress(): Promise<string> {
     return Promise.resolve(this.legacyWallet.address);
+  }
+
+  getNetwork(): Promise<Network> {
+    this._checkProvider("getNetwork");
+    // @ts-expect-error - provider is checked in _checkProvider
+    return this.provider.getNetwork();
+  }
+
+  getBalance(address: Address): Promise<bigint> {
+    this._checkProvider("getBalance");
+    // @ts-expect-error - provider is checked in _checkProvider
+    return this.provider.getBalance(address);
+  }
+
+  getTransactionCount(address: Address, blockTag?: BlockTag): Promise<number> {
+    this._checkProvider("getTransactionCount");
+    // @ts-expect-error - provider is checked in _checkProvider
+    return this.provider.getTransactionCount(address, blockTag);
+  }
+
+  async getChainId(): Promise<number> {
+    this._checkProvider("getChainId");
+    // @ts-expect-error - provider is checked in _checkProvider
+    const network = await this.provider.getNetwork();
+    return Number(network.chainId);
+  }
+
+  async getGasPrice(): Promise<BigNumber> {
+    throw new Error("[SignerWrapper] Get gas price not implemented.");
+  }
+
+  async getFeeData(): Promise<FeeData> {
+    this._checkProvider("getFeeData");
+    // @ts-expect-error - provider is checked in _checkProvider
+    return this.provider.getFeeData();
+  }
+
+  checkTransaction(transaction: TransactionRequest): TransactionRequest {
+    throw new Error("[SignerWrapper] Check transaction not implemented.");
+  }
+
+  _checkProvider(operation?: string): void {
+    if (!this.provider) {
+      throw new Error(
+        `[SignerWrapper] Provider required for ${operation || "_checkProvider"}`
+      );
+    }
+  }
+
+  static isSigner(value: unknown): value is Signer {
+    return value !== null && typeof value === "object" && "_isSigner" in value;
   }
 }

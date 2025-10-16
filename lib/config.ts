@@ -13,6 +13,7 @@ export const chain = (process.env.NEXT_PUBLIC_BLOCKCHAIN_NETWORK ??
 
 // optional
 export const openseaApiKey = process.env.NEXT_PUBLIC_OPENSEA_API_KEY ?? "";
+export const elementApiKey = process.env.NEXT_PUBLIC_ELEMENT_API_KEY ?? "";
 export const polygonAlchemyRpcUrl = process.env.NEXT_PUBLIC_POLYGON_ALCHEMY_RPC_URL ?? "";
 
 // assert that all the variables are set
