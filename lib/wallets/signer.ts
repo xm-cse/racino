@@ -1,56 +1,60 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import type { EVMSmartWallet } from "@crossmint/client-sdk-smart-wallet";
 import type {
-  AccessList,
-  Authorization,
-  AuthorizationRequest,
-  BlockTag,
-  FeeData,
-  Network,
   Provider,
-  Signer,
-  TransactionLike,
   TransactionRequest,
-  TypedDataDomain,
-  TypedDataField,
-} from "ethers";
-import { Signature, toBigInt, TransactionResponse } from "ethers";
+  TransactionResponse,
+} from "@ethersproject/abstract-provider";
+import { Signer } from "@ethersproject/abstract-signer";
 import type { Address, Hex } from "viem";
 
-export class SignerWrapper implements Signer {
-  readonly _isSigner: boolean = true; // make it compatible with previous version of ethers
+export class SignerWrapper extends Signer {
   constructor(
     private readonly legacyWallet: EVMSmartWallet,
-    public provider: Provider | null = null
-  ) {}
+    readonly provider: Provider
+  ) {
+    super();
+    this.provider = provider;
+  }
 
   static fromLegacyWallet(
     legacyWallet: EVMSmartWallet,
-    provider?: Provider
+    provider: Provider
   ): SignerWrapper {
     return new SignerWrapper(legacyWallet, provider);
   }
 
-  connect(provider: null | Provider): Signer {
+  connect(provider: Provider): Signer {
     return new SignerWrapper(this.legacyWallet, provider);
   }
 
-  async getNonce(blockTag?: BlockTag): Promise<number> {
-    this._checkProvider("getNonce");
-    const address = this.legacyWallet.address;
-    // @ts-expect-error - provider is checked in _checkProvider
-    return this.provider.getTransactionCount(address, blockTag);
+  signTransaction(_tx: TransactionRequest): Promise<string> {
+    throw new Error("[SignerWrapper] Sign transaction not implemented.");
   }
 
-  populateCall(_tx: TransactionRequest): Promise<TransactionLike<string>> {
-    throw new Error("[SignerWrapper] Populate call not implemented.");
+  async sendTransaction(tx: TransactionRequest): Promise<TransactionResponse> {
+    try {
+      console.log("[SignerWrapper] Sending transaction:", tx);
+      const populatedTx = await this.populateTransaction(tx);
+      console.log("[SignerWrapper] Populated transaction:", populatedTx);
+      const txHash = await this.legacyWallet.client.wallet.sendTransaction({
+        to: populatedTx.to as Address,
+        value: populatedTx.value ? BigInt(populatedTx.value.toString()) : 0n,
+        data: (populatedTx.data as Hex) || "0x",
+      });
+
+      // Wait for the actual transaction receipt
+      await this.provider.waitForTransaction(txHash);
+      return this.provider.getTransaction(txHash);
+    } catch (error) {
+      console.error("[SignerWrapper] Failed to send transaction:", error);
+      throw error;
+    }
   }
 
   async populateTransaction(
     tx: TransactionRequest
-  ): Promise<TransactionLike<string>> {
-    this._checkProvider("populateTransaction");
-
+  ): Promise<TransactionRequest> {
     const populated = { ...tx };
 
     // Add from address if not present
@@ -60,105 +64,23 @@ export class SignerWrapper implements Signer {
 
     // Add chain ID if not present
     if (!populated.chainId) {
-      // @ts-expect-error - provider is checked in _checkProvider
       const network = await this.provider.getNetwork();
       populated.chainId = network.chainId;
     }
 
     // Add nonce if not present
     if (populated.nonce == null) {
-      populated.nonce = await this.getNonce();
+      populated.nonce = await this.provider.getTransactionCount(
+        populated.from as Address
+      );
     }
 
     // Estimate gas if not present
     if (!populated.gasLimit) {
-      // @ts-expect-error - provider is checked in _checkProvider
       populated.gasLimit = await this.provider.estimateGas(populated);
     }
 
-    return populated as TransactionLike<string>;
-  }
-
-  async estimateGas(tx: TransactionRequest): Promise<bigint> {
-    this._checkProvider("estimateGas");
-
-    const txRequest = { ...tx };
-    if (!txRequest.from) {
-      txRequest.from = this.legacyWallet.address;
-    }
-
-    // @ts-expect-error - provider is checked in _checkProvider
-    return this.provider.estimateGas(txRequest);
-  }
-
-  async call(tx: TransactionRequest): Promise<string> {
-    this._checkProvider("call");
-
-    const txRequest = { ...tx };
-    if (!txRequest.from) {
-      txRequest.from = this.legacyWallet.address;
-    }
-
-    // @ts-expect-error - provider is checked in _checkProvider
-    return this.provider.call(txRequest);
-  }
-
-  resolveName(_name: string): Promise<null | string> {
-    throw new Error("[SignerWrapper] Resolve name not implemented.");
-  }
-
-  signTransaction(_tx: TransactionRequest): Promise<string> {
-    throw new Error("[SignerWrapper] Sign transaction not implemented.");
-  }
-
-  async sendTransaction(tx: TransactionRequest): Promise<TransactionResponse> {
-    try {
-      // Populate transaction if needed
-      const populatedTx = await this.populateTransaction(tx);
-      const txHash = await this.legacyWallet.client.wallet.sendTransaction({
-        to: populatedTx.to as Address,
-        value: populatedTx.value ? toBigInt(populatedTx.value) : 0n,
-        data: (populatedTx.data as Hex) || "0x",
-      });
-
-      // Wait for the actual transaction receipt
-      if (this.provider) {
-        await this.provider.waitForTransaction(txHash);
-        const transaction = await this.provider.getTransaction(txHash);
-        if (transaction) {
-          return transaction;
-        }
-      }
-
-      return new TransactionResponse(
-        {
-          ...populatedTx,
-          chainId: tx.chainId as bigint,
-          accessList: tx.accessList as AccessList,
-          to: tx.to as Address,
-          value: tx.value as bigint,
-          signature: new Signature(txHash, "0", "0", 27),
-          hash: txHash,
-          blockNumber: null,
-          blockHash: null,
-          from: tx.from as Address,
-          index: 0,
-          type: 0,
-          nonce: 0,
-          gasPrice: 0n,
-          gasLimit: 0n,
-          maxPriorityFeePerGas: 0n,
-          maxFeePerGas: 0n,
-          maxFeePerBlobGas: 0n,
-          data: tx.data as Hex,
-          authorizationList: [],
-        },
-        this.provider as Provider
-      );
-    } catch (error) {
-      console.error("[SignerWrapper] Failed to send transaction:", error);
-      throw error;
-    }
+    return populated as TransactionRequest;
   }
 
   signMessage(_message: string | Uint8Array): Promise<string> {
@@ -170,107 +92,7 @@ export class SignerWrapper implements Signer {
     });
   }
 
-  async signTypedData(
-    _domain: TypedDataDomain,
-    _types: Record<string, Array<TypedDataField>>,
-    _value: Record<string, unknown>
-  ): Promise<string> {
-    // Convert ethers domain to viem domain
-    const domain = {
-      ...(_domain.name && { name: _domain.name }),
-      ...(_domain.version && { version: _domain.version }),
-      ...(_domain.chainId && { chainId: Number(_domain.chainId.toString()) }),
-      ...(_domain.verifyingContract && {
-        verifyingContract: _domain.verifyingContract as `0x${string}`,
-      }),
-      ...(_domain.salt && { salt: _domain.salt as `0x${string}` }),
-    };
-
-    // Convert ethers types to viem types
-    // ethers TypedDataField[] needs to be converted to viem's format
-    const types = Object.fromEntries(
-      Object.entries(_types)
-        .filter(([key]) => key !== "EIP712Domain")
-        .map(([key, fields]) => [
-          key,
-          fields.map((field) => ({
-            name: field.name,
-            type: field.type,
-          })),
-        ])
-    );
-
-    // Sign with viem
-    return this.legacyWallet.client.wallet.signTypedData({
-      domain,
-      types,
-      primaryType: Object.keys(_types).find((t) => t !== "EIP712Domain") || "",
-      message: _value,
-    });
-  }
-
-  populateAuthorization(
-    _auth: AuthorizationRequest
-  ): Promise<AuthorizationRequest> {
-    throw new Error("[SignerWrapper] Populate authorization not implemented.");
-  }
-
-  authorize(_authorization: AuthorizationRequest): Promise<Authorization> {
-    throw new Error("[SignerWrapper] Authorize not implemented.");
-  }
-
   getAddress(): Promise<string> {
     return Promise.resolve(this.legacyWallet.address);
-  }
-
-  getNetwork(): Promise<Network> {
-    this._checkProvider("getNetwork");
-    // @ts-expect-error - provider is checked in _checkProvider
-    return this.provider.getNetwork();
-  }
-
-  getBalance(address: Address): Promise<bigint> {
-    this._checkProvider("getBalance");
-    // @ts-expect-error - provider is checked in _checkProvider
-    return this.provider.getBalance(address);
-  }
-
-  getTransactionCount(address: Address, blockTag?: BlockTag): Promise<number> {
-    this._checkProvider("getTransactionCount");
-    // @ts-expect-error - provider is checked in _checkProvider
-    return this.provider.getTransactionCount(address, blockTag);
-  }
-
-  async getChainId(): Promise<number> {
-    this._checkProvider("getChainId");
-    // @ts-expect-error - provider is checked in _checkProvider
-    const network = await this.provider.getNetwork();
-    return Number(network.chainId);
-  }
-
-  async getGasPrice(): Promise<BigNumber> {
-    throw new Error("[SignerWrapper] Get gas price not implemented.");
-  }
-
-  async getFeeData(): Promise<FeeData> {
-    this._checkProvider("getFeeData");
-    // @ts-expect-error - provider is checked in _checkProvider
-    return this.provider.getFeeData();
-  }
-
-  checkTransaction(transaction: TransactionRequest): TransactionRequest {
-    throw new Error("[SignerWrapper] Check transaction not implemented.");
-  }
-
-  _checkProvider(operation?: string): void {
-    if (!this.provider) {
-      throw new Error(
-        `[SignerWrapper] Provider required for ${operation || "_checkProvider"}`
-      );
-    }
-  }
-
-  static isSigner(value: unknown): value is Signer {
-    return value !== null && typeof value === "object" && "_isSigner" in value;
   }
 }

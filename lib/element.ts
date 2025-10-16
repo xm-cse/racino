@@ -1,11 +1,13 @@
 import { elementApiKey, polygonAlchemyRpcUrl } from "@/lib/config";
 import { SignerWrapper } from "@/lib/wallets/signer";
 import type { EVMSmartWallet } from "@crossmint/client-sdk-smart-wallet";
-import { JsonRpcProvider } from "ethers";
 import { ElementSDK, Network } from "element-js-sdk";
+import { ethers } from "ethers";
 
 // generates a provider given an rpc url
-export const polygonProvider = new JsonRpcProvider(polygonAlchemyRpcUrl);
+export const polygonProvider = new ethers.providers.JsonRpcProvider(
+  polygonAlchemyRpcUrl
+);
 
 export const listNftToken = async ({
   aaWallet,
