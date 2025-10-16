@@ -348,7 +348,7 @@ export default function Wallet() {
                     contract: "0xa9a6a3626993d487d2dbda3173cf58ca1a9d9e9f",
                     tokenId:
                       "17307355994943782298465196873990082686427308218068658426141694093857785901042",
-                    listingAmount: (Number(listNFTAmount) * 10 ** 6).toString(),
+                    listingAmount: (Number(listNFTAmount) * 10 ** 12).toString(),
                     chain: legacyChain,
                   });
                 }}
