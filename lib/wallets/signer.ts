@@ -179,10 +179,10 @@ export class SignerWrapper implements Signer {
     _value: Record<string, unknown>
   ): Promise<string> {
     // Convert ethers domain to viem domain
-    const domain: SignTypedDataParameters["domain"] = {
+    const domain = {
       ...(_domain.name && { name: _domain.name }),
       ...(_domain.version && { version: _domain.version }),
-      ...(_domain.chainId && { chainId: toBigInt(_domain.chainId) }),
+      ...(_domain.chainId && { chainId: Number(_domain.chainId.toString()) }),
       ...(_domain.verifyingContract && {
         verifyingContract: _domain.verifyingContract as `0x${string}`,
       }),
