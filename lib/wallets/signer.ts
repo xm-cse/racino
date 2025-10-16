@@ -1,59 +1,60 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import type { EVMSmartWallet } from "@crossmint/client-sdk-smart-wallet";
 import type {
-  AccessList,
-  Authorization,
-  AuthorizationRequest,
-  BlockTag,
   Provider,
-  Signer,
-  TransactionLike,
   TransactionRequest,
-  TypedDataDomain,
-  TypedDataField,
-} from "ethers";
-import { TransactionResponse, Signature } from "ethers";
-import type { SignTypedDataParameters, Address, Hex } from "viem";
-import { toBigInt } from "ethers";
+  TransactionResponse,
+} from "@ethersproject/abstract-provider";
+import { Signer } from "@ethersproject/abstract-signer";
+import type { Address, Hex } from "viem";
 
-export class SignerWrapper implements Signer {
+export class SignerWrapper extends Signer {
   constructor(
     private readonly legacyWallet: EVMSmartWallet,
-    public provider: Provider | null = null
-  ) {}
+    readonly provider: Provider
+  ) {
+    super();
+    this.provider = provider;
+  }
 
   static fromLegacyWallet(
     legacyWallet: EVMSmartWallet,
-    provider?: Provider
+    provider: Provider
   ): SignerWrapper {
     return new SignerWrapper(legacyWallet, provider);
   }
 
-  connect(provider: null | Provider): Signer {
+  connect(provider: Provider): Signer {
     return new SignerWrapper(this.legacyWallet, provider);
   }
 
-  async getNonce(blockTag?: BlockTag): Promise<number> {
-    if (!this.provider) {
-      throw new Error("[SignerWrapper] Provider required for getNonce");
-    }
-    const address = this.legacyWallet.address;
-    return this.provider.getTransactionCount(address, blockTag);
+  signTransaction(_tx: TransactionRequest): Promise<string> {
+    throw new Error("[SignerWrapper] Sign transaction not implemented.");
   }
 
-  populateCall(_tx: TransactionRequest): Promise<TransactionLike<string>> {
-    throw new Error("[SignerWrapper] Populate call not implemented.");
+  async sendTransaction(tx: TransactionRequest): Promise<TransactionResponse> {
+    try {
+      console.log("[SignerWrapper] Sending transaction:", tx);
+      const populatedTx = await this.populateTransaction(tx);
+      console.log("[SignerWrapper] Populated transaction:", populatedTx);
+      const txHash = await this.legacyWallet.client.wallet.sendTransaction({
+        to: populatedTx.to as Address,
+        value: populatedTx.value ? BigInt(populatedTx.value.toString()) : 0n,
+        data: (populatedTx.data as Hex) || "0x",
+      });
+
+      // Wait for the actual transaction receipt
+      await this.provider.waitForTransaction(txHash);
+      return this.provider.getTransaction(txHash);
+    } catch (error) {
+      console.error("[SignerWrapper] Failed to send transaction:", error);
+      throw error;
+    }
   }
 
   async populateTransaction(
     tx: TransactionRequest
-  ): Promise<TransactionLike<string>> {
-    if (!this.provider) {
-      throw new Error(
-        "[SignerWrapper] Provider required for populateTransaction"
-      );
-    }
-
+  ): Promise<TransactionRequest> {
     const populated = { ...tx };
 
     // Add from address if not present
@@ -69,7 +70,9 @@ export class SignerWrapper implements Signer {
 
     // Add nonce if not present
     if (populated.nonce == null) {
-      populated.nonce = await this.getNonce();
+      populated.nonce = await this.provider.getTransactionCount(
+        populated.from as Address
+      );
     }
 
     // Estimate gas if not present
@@ -77,91 +80,7 @@ export class SignerWrapper implements Signer {
       populated.gasLimit = await this.provider.estimateGas(populated);
     }
 
-    return populated as TransactionLike<string>;
-  }
-
-  async estimateGas(tx: TransactionRequest): Promise<bigint> {
-    if (!this.provider) {
-      throw new Error("[SignerWrapper] Provider required for estimateGas");
-    }
-
-    const txRequest = { ...tx };
-    if (!txRequest.from) {
-      txRequest.from = this.legacyWallet.address;
-    }
-
-    return this.provider.estimateGas(txRequest);
-  }
-
-  async call(tx: TransactionRequest): Promise<string> {
-    if (!this.provider) {
-      throw new Error("[SignerWrapper] Provider required for call");
-    }
-
-    const txRequest = { ...tx };
-    if (!txRequest.from) {
-      txRequest.from = this.legacyWallet.address;
-    }
-
-    return this.provider.call(txRequest);
-  }
-
-  resolveName(_name: string): Promise<null | string> {
-    throw new Error("[SignerWrapper] Resolve name not implemented.");
-  }
-
-  signTransaction(_tx: TransactionRequest): Promise<string> {
-    throw new Error("[SignerWrapper] Sign transaction not implemented.");
-  }
-
-  async sendTransaction(tx: TransactionRequest): Promise<TransactionResponse> {
-    try {
-      // Populate transaction if needed
-      const populatedTx = await this.populateTransaction(tx);
-      const txHash = await this.legacyWallet.client.wallet.sendTransaction({
-        to: populatedTx.to as Address,
-        value: populatedTx.value ? toBigInt(populatedTx.value) : 0n,
-        data: (populatedTx.data as Hex) || "0x",
-      });
-
-      // Wait for the actual transaction receipt
-      if (this.provider) {
-        await this.provider.waitForTransaction(txHash);
-        const transaction = await this.provider.getTransaction(txHash);
-        if (transaction) {
-          return transaction;
-        }
-      }
-
-      return new TransactionResponse(
-        {
-          ...populatedTx,
-          chainId: tx.chainId as bigint,
-          accessList: tx.accessList as AccessList,
-          to: tx.to as Address,
-          value: tx.value as bigint,
-          signature: new Signature(txHash, "0", "0", 27),
-          hash: txHash,
-          blockNumber: null,
-          blockHash: null,
-          from: tx.from as Address,
-          index: 0,
-          type: 0,
-          nonce: 0,
-          gasPrice: 0n,
-          gasLimit: 0n,
-          maxPriorityFeePerGas: 0n,
-          maxFeePerGas: 0n,
-          maxFeePerBlobGas: 0n,
-          data: tx.data as Hex,
-          authorizationList: [],
-        },
-        this.provider as Provider
-      );
-    } catch (error) {
-      console.error("[SignerWrapper] Failed to send transaction:", error);
-      throw error;
-    }
+    return populated as TransactionRequest;
   }
 
   signMessage(_message: string | Uint8Array): Promise<string> {
@@ -171,55 +90,6 @@ export class SignerWrapper implements Signer {
     return this.legacyWallet.client.wallet.signMessage({
       message: msg,
     });
-  }
-
-  async signTypedData(
-    _domain: TypedDataDomain,
-    _types: Record<string, Array<TypedDataField>>,
-    _value: Record<string, unknown>
-  ): Promise<string> {
-    // Convert ethers domain to viem domain
-    const domain: SignTypedDataParameters["domain"] = {
-      ...(_domain.name && { name: _domain.name }),
-      ...(_domain.version && { version: _domain.version }),
-      ...(_domain.chainId && { chainId: toBigInt(_domain.chainId) }),
-      ...(_domain.verifyingContract && {
-        verifyingContract: _domain.verifyingContract as `0x${string}`,
-      }),
-      ...(_domain.salt && { salt: _domain.salt as `0x${string}` }),
-    };
-
-    // Convert ethers types to viem types
-    // ethers TypedDataField[] needs to be converted to viem's format
-    const types = Object.fromEntries(
-      Object.entries(_types)
-        .filter(([key]) => key !== "EIP712Domain")
-        .map(([key, fields]) => [
-          key,
-          fields.map((field) => ({
-            name: field.name,
-            type: field.type,
-          })),
-        ])
-    );
-
-    // Sign with viem
-    return this.legacyWallet.client.wallet.signTypedData({
-      domain,
-      types,
-      primaryType: Object.keys(_types).find((t) => t !== "EIP712Domain") || "",
-      message: _value,
-    });
-  }
-
-  populateAuthorization(
-    _auth: AuthorizationRequest
-  ): Promise<AuthorizationRequest> {
-    throw new Error("[SignerWrapper] Populate authorization not implemented.");
-  }
-
-  authorize(_authorization: AuthorizationRequest): Promise<Authorization> {
-    throw new Error("[SignerWrapper] Authorize not implemented.");
   }
 
   getAddress(): Promise<string> {
