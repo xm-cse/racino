@@ -5,8 +5,12 @@ import type {
   TransactionRequest,
   TransactionResponse,
 } from "@ethersproject/abstract-provider";
-import { Signer } from "@ethersproject/abstract-signer";
-import type { Address, Hex } from "viem";
+import {
+  Signer,
+  type TypedDataDomain,
+  type TypedDataField,
+} from "@ethersproject/abstract-signer";
+import type { Address, Hex, SignTypedDataParameters } from "viem";
 
 export class SignerWrapper extends Signer {
   constructor(
@@ -89,6 +93,45 @@ export class SignerWrapper extends Signer {
     const msg = _message instanceof Uint8Array ? { raw: _message } : _message;
     return this.legacyWallet.client.wallet.signMessage({
       message: msg,
+    });
+  }
+
+  signTypedData(
+    _domain: TypedDataDomain,
+    _types: Record<string, Array<TypedDataField>>,
+    _value: Record<string, unknown>
+  ): Promise<string> {
+    // Convert ethers domain to viem domain
+    const domain: SignTypedDataParameters["domain"] = {
+      ...(_domain.name && { name: _domain.name }),
+      ...(_domain.version && { version: _domain.version }),
+      ...(_domain.chainId && { chainId: BigInt(_domain.chainId.toString()) }),
+      ...(_domain.verifyingContract && {
+        verifyingContract: _domain.verifyingContract as `0x${string}`,
+      }),
+      ...(_domain.salt && { salt: _domain.salt as `0x${string}` }),
+    };
+
+    // Convert ethers types to viem types
+    // ethers TypedDataField[] needs to be converted to viem's format
+    const types = Object.fromEntries(
+      Object.entries(_types)
+        .filter(([key]) => key !== "EIP712Domain")
+        .map(([key, fields]) => [
+          key,
+          fields.map((field) => ({
+            name: field.name,
+            type: field.type,
+          })),
+        ])
+    );
+
+    // Sign with viem
+    return this.legacyWallet.client.wallet.signTypedData({
+      domain,
+      types,
+      primaryType: Object.keys(_types).find((t) => t !== "EIP712Domain") || "",
+      message: _value,
     });
   }
 
