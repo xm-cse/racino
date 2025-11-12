@@ -17,6 +17,7 @@
     "@ethersproject/abstract-signer": "^5.8.0",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.0",
+    "@reservoir0x/reservoir-sdk": "^2.5.7",
     "@tanstack/react-query": "^5.74.4",
     "@web3auth/base": "^9.7.0",
     "@web3auth/ethereum-provider": "^9.7.0",

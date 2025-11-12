@@ -13,3 +13,4 @@ export const getOrCreateWallets = async (
 
 export * from "./legacy";
 export * from "./latest";
+export * from "./client";
