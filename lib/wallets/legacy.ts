@@ -62,7 +62,7 @@ export interface ExecuteContractOptions {
 }
 
 // EntryPoint UserOperationEvent ABI
-const USER_OPERATION_EVENT_ABI = {
+export const USER_OPERATION_EVENT_ABI = {
   anonymous: false,
   inputs: [
     { indexed: true, name: "userOpHash", type: "bytes32" },
@@ -77,7 +77,7 @@ const USER_OPERATION_EVENT_ABI = {
   type: "event",
 } as const;
 
-const USER_OP_EVENT_TOPIC =
+export const USER_OP_EVENT_TOPIC =
   "0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f";
 
 export const xm = SmartWalletSDK.init({
